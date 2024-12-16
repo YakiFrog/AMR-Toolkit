@@ -4,24 +4,21 @@ import Link from 'next/link';
 import { FaMap } from 'react-icons/fa';
 import { Sidebar } from '../components/common/sidebar';
 import { DatabaseItems } from '../components/common/database-items';
-import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
 
 export default function HomePage() {
   return (
     <React.Fragment>
       <Head>
-        <title>ホーム - AMR_Toolkit</title>
+        <title>ホーム - PGM Map Editor</title>
       </Head>
       <Sidebar />
-      <ToastContainer /> {/* 追加 */}
       <div className="ml-16 min-h-screen bg-gray-50 p-8">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-4xl font-bold text-gray-800 mb-6">
-            AMR_Toolkit
+            PGM Map Editor
           </h1>
           <p className="text-xl text-gray-600 mb-8">
-            自律移動ロボットの開発をサポートするためのツールです。
+            PGMファイルを使用して地図編集を行うためのツールです。
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -21,6 +21,10 @@ interface PGMAppDB extends DBSchema {
         scrollLeft: number;
         scrollTop: number;
       };
+      drawingData?: {  // 追加
+        imageData: ImageData;
+        lastModified: number;
+      };
     };
   };
 }

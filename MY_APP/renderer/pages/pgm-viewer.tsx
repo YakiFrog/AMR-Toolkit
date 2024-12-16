@@ -5,7 +5,6 @@ import 'react-toastify/dist/ReactToastify.css';
 import { Sidebar } from '../components/common/sidebar';
 import { PGMViewer } from '../components/waypoint-editor/pgm_viewer';
 import { getDB } from '../db'; // DB関連のインポートを追加
-import { LayerPanel } from '../components/waypoint-editor/layer_panel';
 
 export default function PGMViewerPage() {
   const [selectedFile, setSelectedFile] = useState<File | undefined>(undefined);
@@ -199,23 +198,6 @@ export default function PGMViewerPage() {
     transition: isDragging.current ? 'none' : 'width 0.1s ease-out'
   }), [resizeRatio]);
 
-  const [layers, setLayers] = useState([
-    { id: 'pgm', name: 'PGMマップ', visible: true, color: '#666666' },
-    { id: 'drawing', name: '描写レイヤー', visible: true, color: '#3B82F6' }
-  ]);
-
-  const handleToggleLayer = useCallback((layerId: string) => {
-    setLayers(prev => prev.map(layer =>
-      layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
-    ));
-  }, []);
-
-  // レイヤーの表示状態をオブジェクトとして生成
-  const layerVisibility = {
-    pgm: layers.find(l => l.id === 'pgm')?.visible ?? true,
-    drawing: layers.find(l => l.id === 'drawing')?.visible ?? true
-  };
-
   return (
     <React.Fragment>
       <Head>
@@ -224,7 +206,7 @@ export default function PGMViewerPage() {
       <ToastContainer />
       <Sidebar />
       <div className="ml-16 min-h-screen bg-gray-50 p-8">
-        <div className="max-w-full mx-auto h-[calc(100vh-120px)]"> {/* 高さを固定値に変更 */}
+        <div className="max-w-full mx-auto">
           <h1 className="text-4xl font-bold text-gray-800 mb-4">
             PGM ビューアー
           </h1>
@@ -235,7 +217,7 @@ export default function PGMViewerPage() {
           {/* グリッドコンテナをrefで参照できるように */}
           <div 
             ref={containerRef}
-            className="h-[calc(100vh-220px)]" /* 高さを調整 */
+            className="h-[calc(100vh-12rem)] relative"
           >
             {/* gapを調整し、space-x-2を追加 */}
             <div className="flex h-full space-x-2">
@@ -258,7 +240,6 @@ export default function PGMViewerPage() {
                   <PGMViewer
                     key={selectedFile.name} // キーを追加して再マウントを制御
                     file={selectedFile}
-                    layerVisibility={layerVisibility}
                     onLoadSuccess={() => {
                       // 初回のみ通知を表示
                       if (!sessionStorage.getItem(`loaded-${selectedFile.name}`)) {
@@ -286,16 +267,12 @@ export default function PGMViewerPage() {
                 onMouseDown={startResize}
               />
 
-              {/* 右サイドパネル - LayerPanel を追加 */}
+              {/* 操作ガイド - calcを調整 */}
               <div 
                 className="bg-white rounded-lg shadow-lg p-6"
                 style={{ width: `calc(${100 - resizeRatio}% - 2px)` }}
               >
-                <div className="space-y-4">
-                  <LayerPanel
-                    layers={layers}
-                    onToggleLayer={handleToggleLayer}
-                  />
+                <div className="space-y-6 order-1 lg:order-none">
                   <div className="bg-white rounded-lg shadow-lg p-6">
                     <h2 className="text-xl font-semibold text-gray-800 mb-4">操作方法</h2>
                     <ul className="space-y-2 text-gray-600">
