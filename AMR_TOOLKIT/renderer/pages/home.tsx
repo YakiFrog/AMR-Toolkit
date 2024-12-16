@@ -9,16 +9,16 @@ export default function HomePage() {
   return (
     <React.Fragment>
       <Head>
-        <title>ホーム - PGM Map Editor</title>
+        <title>ホーム - AMR_Toolkit</title>
       </Head>
       <Sidebar />
       <div className="ml-16 min-h-screen bg-gray-50 p-8">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-4xl font-bold text-gray-800 mb-6">
-            PGM Map Editor
+            AMR_Toolkit
           </h1>
           <p className="text-xl text-gray-600 mb-8">
-            PGMファイルを使用して地図編集を行うためのツールです。
+            自律移動ロボットの開発をサポートするためのツールです。
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
