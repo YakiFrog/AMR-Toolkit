@@ -3,6 +3,7 @@ import { getDB, clearDB } from '../../db'; // DB関連のインポートを追�
 import debounce from 'lodash/debounce';
 import throttle from 'lodash/throttle';
 import { Tool, DrawingTools } from './drawing_tools';
+import { LayerManager } from './layer_manager';
 
 declare global {
   interface Window {
@@ -76,6 +77,40 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
   const [history, setHistory] = useState<ImageData[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1); // 初期値を-1に戻す
 
+  const layerManagerRef = useRef<LayerManager | null>(null);
+
+  // レイヤーマネージャーの初期化
+  const initLayerManager = useCallback(() => {
+    if (!currentImageData || !containerRef.current) return;
+
+    const container = containerRef.current.querySelector('div[style*="transform"]');
+    if (!container) return;
+    
+    layerManagerRef.current = new LayerManager(
+      currentImageData.width,
+      currentImageData.height,
+      container
+    );
+
+    // 基本レイヤーの作成
+    layerManagerRef.current.createLayer('pgm', 0);
+    layerManagerRef.current.createLayer('drawing', 1);
+    layerManagerRef.current.createLayer('grid', 2);
+
+    // 初期表示状態の設定
+    layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
+    layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
+  }, [currentImageData, layerVisibility]);
+
+  // レイヤーの表示状態の更新
+  useEffect(() => {
+    if (!layerManagerRef.current) return;
+    
+    layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
+    layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
+    requestDraw();
+  }, [layerVisibility]);
+
   useEffect(() => {
     if (!canvasRef.current || !drawingCanvasRef.current) return;
     
@@ -107,11 +142,10 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
 
   // draw関数を最初に定義
   const draw = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
-    if (!drawingCanvasRef.current || !isDrawing.current || !currentImageData) return;
+    if (!isDrawing.current || !layerManagerRef.current) return;
     
-    const canvas = drawingCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const drawingLayer = layerManagerRef.current.getLayer('drawing');
+    if (!drawingLayer || !drawingLayer.visible) return;
 
     // コンテナの位置を取得
     const containerRect = containerRef.current?.getBoundingClientRect();
@@ -125,33 +159,29 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     const x = ((e.clientX - containerRect.left + scrollLeft) / scale);
     const y = ((e.clientY - containerRect.top + scrollTop) / scale);
 
-    ctx.beginPath();
+    drawingLayer.ctx.beginPath();
     if (lastPos.current) {
-      ctx.moveTo(lastPos.current.x, lastPos.current.y);
-      ctx.lineTo(x, y);
+      drawingLayer.ctx.moveTo(lastPos.current.x, lastPos.current.y);
+      drawingLayer.ctx.lineTo(x, y);
     } else {
-      ctx.moveTo(x, y);
-      ctx.lineTo(x, y);
+      drawingLayer.ctx.moveTo(x, y);
+      drawingLayer.ctx.lineTo(x, y);
     }
 
-    ctx.strokeStyle = currentTool === 'pen' ? 'black' : 'white';
-    ctx.lineWidth = penSize / scale; // スケールに応じてペンサイズを調整
-    ctx.stroke();
+    drawingLayer.ctx.strokeStyle = currentTool === 'pen' ? 'black' : 'white';
+    drawingLayer.ctx.lineWidth = penSize / scale; // スケールに応じてペンサイズを調整
+    drawingLayer.ctx.stroke();
     lastPos.current = { x, y };
-  }, [currentTool, penSize, scale, currentImageData]);
+  }, [currentTool, penSize, scale]);
 
   // グリッド描画を最初に定義
-  const drawGrid = useCallback(() => {
-    if (!currentImageData || !gridCanvasRef.current) return;
-    
-    const canvas = gridCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  const drawGrid = useCallback((ctx: CanvasRenderingContext2D) => {
+    if (!currentImageData) return;
 
     const { width, height } = currentImageData;
     // スケールに関係なく、元の画像サイズに合わせてキャンバスサイズを設定
-    canvas.width = width;
-    canvas.height = height;
+    ctx.canvas.width = width;
+    ctx.canvas.height = height;
 
     // グリッドの描画
     ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
@@ -180,71 +210,32 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
 
   // drawImage関数を修正 - グリッドを別のキャンバスに描画
   const drawImage = useCallback(() => {
-    if (!currentImageData || !canvasRef.current || drawingRef.current) return;
+    if (!currentImageData || !layerManagerRef.current) return;
     
-    drawingRef.current = true;
-    try {
-      const { width, height, pixelData } = currentImageData;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d', { 
-        alpha: false,
-        willReadFrequently: false
-      });
-      if (!ctx) return;
-
-      const scaledWidth = Math.floor(width * scale);
-      const scaledHeight = Math.floor(height * scale);
-
-      // キャンバスサイズの最適化
-      if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
-        canvas.width = scaledWidth;
-        canvas.height = scaledHeight;
+    const { width, height, pixelData } = currentImageData;
+    const pgmLayer = layerManagerRef.current.getLayer('pgm');
+    
+    if (pgmLayer) {
+      const imageData = pgmLayer.ctx.createImageData(width, height);
+      for (let i = 0; i < pixelData.length; i++) {
+        const offset = i * 4;
+        imageData.data[offset] = pixelData[i];
+        imageData.data[offset + 1] = pixelData[i];
+        imageData.data[offset + 2] = pixelData[i];
+        imageData.data[offset + 3] = 255;
       }
-
-      // オフスクリーンキャンバスの初期化
-      if (!offscreenCanvasRef.current) {
-        offscreenCanvasRef.current = document.createElement('canvas');
-        offscreenCanvasRef.current.width = width;
-        offscreenCanvasRef.current.height = height;
-        
-        const offCtx = offscreenCanvasRef.current.getContext('2d', {
-          alpha: false,
-          willReadFrequently: false
-        });
-        if (!offCtx) return;
-
-        const imageData = new ImageData(width, height);
-        const data = imageData.data;
-        
-        // 最適化されたピクセルデータのコピー
-        for (let i = 0, j = 0; i < pixelData.length; i++, j += 4) {
-          data[j] = data[j + 1] = data[j + 2] = pixelData[i];
-          data[j + 3] = 255;
-        }
-        
-        offCtx.putImageData(imageData, 0, 0);
-      }
-
-      ctx.imageSmoothingEnabled = false;
-      ctx.clearRect(0, 0, scaledWidth, scaledHeight);
-      
-      ctx.drawImage(
-        offscreenCanvasRef.current,
-        0, 0, width, height,
-        0, 0, scaledWidth, scaledHeight
-      );
-
-      // グリッドの更新
-      if (showGrid) {
-        drawGrid();
-      }
-    } catch (error) {
-      console.error('Draw error:', error);
-      onLoadError?.('描画中にエラーが発生しました。');
-    } finally {
-      drawingRef.current = false;
+      pgmLayer.ctx.putImageData(imageData, 0, 0);
     }
-  }, [currentImageData, scale, showGrid, onLoadError, drawGrid]);
+
+    if (showGrid) {
+      const gridLayer = layerManagerRef.current.getLayer('grid');
+      if (gridLayer) {
+        drawGrid(gridLayer.ctx);
+      }
+    }
+
+    layerManagerRef.current.render();
+  }, [currentImageData, showGrid]);
 
   // requestDraw関数を次に宣言
   const requestDraw = useCallback(() => {
@@ -407,34 +398,10 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
 
   // 画像表示処理を修正
   const displayPGM = useCallback(({ width, height, pixelData }: PGMImageData) => {
-    if (!containerRef.current) return;
-
-    // 既存のcanvasがある場合は削除
-    const existingCanvas = canvasRef.current;
-    if (existingCanvas) {
-      existingCanvas.remove();
-    }
-
-    // 新しいcanvasを作成
-    const canvas = document.createElement('canvas');
-    canvas.id = 'pgm-canvas';
-    canvas.style.display = 'block';
-    containerRef.current.appendChild(canvas);
-    canvasRef.current = canvas;
-    
     setCurrentImageData({ width, height, pixelData });
-
-    // 初回表示時のみフィットスケールを設定
-    if (!currentImageData) {
-      requestAnimationFrame(() => {
-        const fitScale = calculateFitScale();
-        setScale(fitScale);
-      });
-    } else {
-      // 既存の画像データがある場合は即時描画
-      requestAnimationFrame(drawImage);
-    }
-  }, [calculateFitScale, currentImageData, drawImage]);
+    initLayerManager();
+    requestDraw();
+  }, [initLayerManager, requestDraw]);
 
   // 描画アクションの後に履歴を保存する関数
   const saveToHistory = useCallback(() => {
@@ -666,7 +633,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     };
   }, []);
 
-  // 座標軸の値を表示するコンポーネント
+  // 座標軸の表示を表示するコンポーネント
   const CoordinateAxes: React.FC = useCallback(() => {
     if (!currentImageData || !showGrid) return null;
     const container = document.getElementById('pgm-container');
@@ -947,7 +914,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     setHistory(prev => {
       const newHistory = prev.slice(0, historyIndex + 1);
       newHistory.push(imageData);
-      // 履歴の最大数を制限（メモリ管理のため）
+      // 履歴の最大数を制限（メモ��管理のため）
       while (newHistory.length > 50) {
         newHistory.shift();
       }
@@ -1084,27 +1051,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
                 transformOrigin: '0 0',
                 transform: `scale(${scale})`
               }}>
-                <canvas ref={canvasRef} />
-                {showGrid && (
-                  <canvas
-                    ref={gridCanvasRef}
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: 0,
-                      pointerEvents: 'none',
-                    }}
-                  />
-                )}
-                <canvas 
-                  ref={drawingCanvasRef}
-                  style={{ 
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    pointerEvents: currentTool === 'none' ? 'none' : 'auto'
-                  }} 
-                />
+                {/* 既存のcanvasを削除し、LayerManagerが管理するキャンバスのみを使用 */}
               </div>
             </div>
           </div>
