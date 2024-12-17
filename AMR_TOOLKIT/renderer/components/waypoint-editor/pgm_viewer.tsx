@@ -79,102 +79,35 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
 
   const layerManagerRef = useRef<LayerManager | null>(null);
 
-  // レイヤーマネージャーの初期化
-  const initLayerManager = useCallback(() => {
-    if (!currentImageData || !containerRef.current) return;
-
-    const container = containerRef.current.querySelector('div[style*="transform"]');
-    if (!container) return;
-    
-    layerManagerRef.current = new LayerManager(
-      currentImageData.width,
-      currentImageData.height,
-      container
-    );
-
-    // 基本レイヤーの作成
-    layerManagerRef.current.createLayer('pgm', 0);
-    layerManagerRef.current.createLayer('drawing', 1);
-    layerManagerRef.current.createLayer('grid', 2);
-
-    // 初期表示状態の設定
-    layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
-    layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
-  }, [currentImageData, layerVisibility]);
-
-  // レイヤーの表示状態の更新
-  useEffect(() => {
+  // saveToHistory を最初に定義
+  const saveToHistory = useCallback(() => {
     if (!layerManagerRef.current) return;
     
-    layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
-    layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
-    requestDraw();
-  }, [layerVisibility]);
-
-  useEffect(() => {
-    if (!canvasRef.current || !drawingCanvasRef.current) return;
-    
-    if (canvasRef.current) {
-      canvasRef.current.style.display = layerVisibility.pgm ? 'block' : 'none';
-    }
-    if (drawingCanvasRef.current) {
-      drawingCanvasRef.current.style.display = layerVisibility.drawing ? 'block' : 'none';
-    }
-  }, [layerVisibility]);
-
-  // 描画レイヤーの初期化関数
-  const initDrawingCanvas = useCallback(() => {
-    if (!drawingCanvasRef.current || !currentImageData || !containerRef.current) return;
-    
-    const canvas = drawingCanvasRef.current;
-    canvas.width = currentImageData.width;
-    canvas.height = currentImageData.height;
-    
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.globalCompositeOperation = 'source-over';
-      // 描画コンテキストの初期化
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-  }, [currentImageData]);
-
-  // draw関数を最初に定義
-  const draw = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
-    if (!isDrawing.current || !layerManagerRef.current) return;
-    
     const drawingLayer = layerManagerRef.current.getLayer('drawing');
-    if (!drawingLayer || !drawingLayer.visible) return;
+    if (!drawingLayer) return;
 
-    // コンテナの位置を取得
-    const containerRect = containerRef.current?.getBoundingClientRect();
-    if (!containerRect) return;
+    const ctx = drawingLayer.ctx;
+    if (!ctx) return;
 
-    // スクロール位置を考慮した座標計算
-    const scrollLeft = containerRef.current?.scrollLeft || 0;
-    const scrollTop = containerRef.current?.scrollTop || 0;
+    const imageData = ctx.getImageData(0, 0, drawingLayer.canvas.width, drawingLayer.canvas.height);
+    
+    setHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(imageData);
+      return newHistory;
+    });
+    
+    setHistoryIndex(prev => prev + 1);
+    
+    // 履歴保存後に強制的に再描画
+    requestAnimationFrame(() => {
+      if (layerManagerRef.current) {
+        layerManagerRef.current.render();
+      }
+    });
+  }, [historyIndex]);
 
-    // マウス座標をキャンバス座標に変換
-    const x = ((e.clientX - containerRect.left + scrollLeft) / scale);
-    const y = ((e.clientY - containerRect.top + scrollTop) / scale);
-
-    drawingLayer.ctx.beginPath();
-    if (lastPos.current) {
-      drawingLayer.ctx.moveTo(lastPos.current.x, lastPos.current.y);
-      drawingLayer.ctx.lineTo(x, y);
-    } else {
-      drawingLayer.ctx.moveTo(x, y);
-      drawingLayer.ctx.lineTo(x, y);
-    }
-
-    drawingLayer.ctx.strokeStyle = currentTool === 'pen' ? 'black' : 'white';
-    drawingLayer.ctx.lineWidth = penSize / scale; // スケールに応じてペンサイズを調整
-    drawingLayer.ctx.stroke();
-    lastPos.current = { x, y };
-  }, [currentTool, penSize, scale]);
-
-  // グリッド描画を最初に定義
+  // グリッド描画を定義
   const drawGrid = useCallback((ctx: CanvasRenderingContext2D) => {
     if (!currentImageData) return;
 
@@ -208,7 +141,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     ctx.stroke();
   }, [currentImageData, scale]);
 
-  // drawImage関数を修正 - グリッドを別のキャンバスに描画
+  // drawImage関数を定義
   const drawImage = useCallback(() => {
     if (!currentImageData || !layerManagerRef.current) return;
     
@@ -235,9 +168,9 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     }
 
     layerManagerRef.current.render();
-  }, [currentImageData, showGrid]);
+  }, [currentImageData, showGrid, drawGrid]);
 
-  // requestDraw関数を次に宣言
+  // requestDraw関数を定義
   const requestDraw = useCallback(() => {
     if (renderRequestRef.current) {
       cancelAnimationFrame(renderRequestRef.current);
@@ -245,12 +178,142 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
 
     renderRequestRef.current = requestAnimationFrame(() => {
       const now = performance.now();
-      if (now - lastDrawTimeRef.current > 16) { // 60fps制限
+      if (now - lastDrawTimeRef.current > 16) {
         drawImage();
         lastDrawTimeRef.current = now;
       }
     });
   }, [drawImage]);
+
+  // レイヤーマネージャーの初期化
+  const initLayerManager = useCallback(() => {
+    if (!currentImageData || !containerRef.current) return;
+
+    const container = containerRef.current.querySelector('div[style*="transform"]') as HTMLElement;
+    if (!container) return;
+    
+    // 既存のレイヤーマネージャーをクリーンアップ
+    if (layerManagerRef.current) {
+      const mainCanvas = layerManagerRef.current.getMainCanvas();
+      mainCanvas.remove();
+    }
+    
+    layerManagerRef.current = new LayerManager(
+      currentImageData.width,
+      currentImageData.height,
+      container
+    );
+
+    // 基本レイヤーの作成と初期表示状態の設定
+    layerManagerRef.current.createLayer('pgm', 0);
+    layerManagerRef.current.createLayer('drawing', 1);
+    layerManagerRef.current.createLayer('grid', 2);
+
+    // 状態を即時反映
+    layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
+    layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
+    
+    // 初期描画を強制
+    requestDraw();
+  }, [currentImageData, layerVisibility, requestDraw]);
+
+  // レイヤーの表示状態の更新
+  useEffect(() => {
+    if (!layerManagerRef.current) return;
+
+    const drawingLayer = layerManagerRef.current.getLayer('drawing');
+    if (!drawingLayer) return;
+
+    if (!layerVisibility.drawing) {
+      // 非表示時にデータをバックアップ
+      drawingLayerDataRef.current = layerManagerRef.current.getLayerData('drawing');
+    } else if (drawingLayerDataRef.current) {
+      // 表示時にデータを復元
+      layerManagerRef.current.restoreLayerData('drawing', drawingLayerDataRef.current);
+    }
+
+    // 表示状態を更新
+    layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
+    layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
+
+    // 強制的に再描画
+    requestAnimationFrame(() => {
+      if (layerManagerRef.current) {
+        layerManagerRef.current.render();
+      }
+    });
+  }, [layerVisibility]);
+
+  useEffect(() => {
+    if (!canvasRef.current || !drawingCanvasRef.current) return;
+    
+    if (canvasRef.current) {
+      canvasRef.current.style.display = layerVisibility.pgm ? 'block' : 'none';
+    }
+    if (drawingCanvasRef.current) {
+      drawingCanvasRef.current.style.display = layerVisibility.drawing ? 'block' : 'none';
+    }
+  }, [layerVisibility]);
+
+  // 描画レイヤーの初期化関数
+  const initDrawingCanvas = useCallback(() => {
+    if (!drawingCanvasRef.current || !currentImageData || !containerRef.current) return;
+    
+    const canvas = drawingCanvasRef.current;
+    canvas.width = currentImageData.width;
+    canvas.height = currentImageData.height;
+    
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalCompositeOperation = 'source-over';
+      // 描画コンテキストの初期化
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, [currentImageData]);
+
+  // draw関数を定義
+  const draw = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
+    if (!isDrawing.current || !layerManagerRef.current) return;
+    
+    const drawingLayer = layerManagerRef.current.getLayer('drawing');
+    if (!drawingLayer || !drawingLayer.visible) return;
+
+    // コンテナの位置を取得
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+
+    // スクロール位置を考慮した座標計算
+    const scrollLeft = containerRef.current?.scrollLeft || 0;
+    const scrollTop = containerRef.current?.scrollTop || 0;
+
+    // マウス座標をキャンバス座標に変換
+    const x = ((e.clientX - containerRect.left + scrollLeft) / scale);
+    const y = ((e.clientY - containerRect.top + scrollTop) / scale);
+
+    drawingLayer.ctx.beginPath();
+    if (lastPos.current) {
+      drawingLayer.ctx.moveTo(lastPos.current.x, lastPos.current.y);
+      drawingLayer.ctx.lineTo(x, y);
+    } else {
+      drawingLayer.ctx.moveTo(x, y);
+      drawingLayer.ctx.lineTo(x, y);
+    }
+
+    drawingLayer.ctx.strokeStyle = currentTool === 'pen' ? 'black' : 'white';
+    drawingLayer.ctx.lineWidth = penSize / scale; // スケールに応じてペンサイズを調整
+    drawingLayer.ctx.stroke();
+    lastPos.current = { x, y };
+
+    // 描画後に明示的にレンダリング
+    layerManagerRef.current.render();
+    
+    // 描画内容を履歴に保存
+    if (!lastPos.current) {
+      saveToHistory();
+    }
+  }, [currentTool, penSize, scale, saveToHistory]);
 
   // PGMファイルの読み込み処理
   useEffect(() => {
@@ -344,9 +407,6 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     return token
   }
 
-  // 画像描画関連の関数
-  // drawImage関数を修正 - グリッド部分を変更
-
   // フィットするスケールを計算
   const calculateFitScale = useCallback(() => {
     if (!currentImageData) return 1.0;
@@ -399,30 +459,15 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
   // 画像表示処理を修正
   const displayPGM = useCallback(({ width, height, pixelData }: PGMImageData) => {
     setCurrentImageData({ width, height, pixelData });
-    initLayerManager();
-    requestDraw();
-  }, [initLayerManager, requestDraw]);
+    // initLayerManagerはuseEffectで呼び出される
+  }, []);
 
-  // 描画アクションの後に履歴を保存する関数
-  const saveToHistory = useCallback(() => {
-    if (!drawingCanvasRef.current) return;
-    const ctx = drawingCanvasRef.current.getContext('2d');
-    if (!ctx) return;
-
-    const imageData = ctx.getImageData(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
-    
-    setHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(imageData);
-      // 履歴の最大数を制限（メモリ管理のため）
-      while (newHistory.length > 50) {
-        newHistory.shift();
-      }
-      return newHistory;
-    });
-    
-    setHistoryIndex(prev => prev + 1);
-  }, [historyIndex]);
+  // currentImageDataが変更されたときにinitLayerManagerを呼び出す
+  useEffect(() => {
+    if (currentImageData) {
+      initLayerManager();
+    }
+  }, [currentImageData, initLayerManager]);
 
   // 描画データの保存
   const saveDrawingData = useCallback(async () => {
@@ -482,7 +527,14 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
 
   // 描画操作後のハンドラーを修正
   const handleDrawingComplete = useCallback(() => {
+    if (!layerManagerRef.current) return;
+    
+    const drawingLayer = layerManagerRef.current.getLayer('drawing');
+    if (!drawingLayer) return;
+
+    // 描画内容を履歴に保存
     saveToHistory();
+    // 描画内容を永続化
     debouncedSaveDrawingData();
   }, [saveToHistory, debouncedSaveDrawingData]);
 
@@ -520,16 +572,26 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
 
   // マウス座標計算関数を宣言
   const calculateMousePosition = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!canvasRef.current || !currentImageData) {
+    if (!currentImageData || !layerManagerRef.current) {
       return { x: e.clientX, y: e.clientY, imageX: -1, imageY: -1, pixelValue: -1 };
     }
 
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!containerRect) {
+      return { x: e.clientX, y: e.clientY, imageX: -1, imageY: -1, pixelValue: -1 };
+    }
+
+    // スクロール位置を考慮して修正
+    const scrollLeft = containerRef.current?.scrollLeft || 0;
+    const scrollTop = containerRef.current?.scrollTop || 0;
+
+    // マウス座標をキャンバス座標に変換
+    const x = (e.clientX - containerRect.left + scrollLeft) / scale;
+    const y = (e.clientY - containerRect.top + scrollTop) / scale;
     
-    const imageX = Math.floor(x / scale);
-    const imageY = Math.floor(y / scale);
+    // 整数値に変換
+    const imageX = Math.floor(x);
+    const imageY = Math.floor(y);
     
     const isInBounds = 
       imageX >= 0 && 
@@ -541,7 +603,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
       x: e.clientX,
       y: e.clientY,
       imageX: isInBounds ? imageX : -1,
-      imageY: isInBounds ? imageY : -1, // 二重の三項演算子を修正
+      imageY: isInBounds ? imageY : -1,
       pixelValue: isInBounds ? currentImageData.pixelData[imageY * currentImageData.width + imageX] : -1
     };
   }, [currentImageData, scale]);
@@ -608,11 +670,11 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
   // リサイズイベントの設定
   useEffect(() => {
     if (currentImageData) {
-      drawImage();
-      window.addEventListener('resize', drawImage);
-      return () => window.removeEventListener('resize', drawImage);
+      requestDraw();
+      window.addEventListener('resize', requestDraw);
+      return () => window.removeEventListener('resize', requestDraw);
     }
-  }, [currentImageData, drawImage]);
+  }, [currentImageData, requestDraw]);
 
   // キーイベントの設定
   useEffect(() => {
@@ -824,7 +886,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     if (currentImageData && canvasRef.current) {
       requestDraw();
     }
-  }, [currentImageData, scale, drawImage]);
+  }, [currentImageData, scale]);
 
   // 描画の最適化
 
@@ -914,7 +976,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     setHistory(prev => {
       const newHistory = prev.slice(0, historyIndex + 1);
       newHistory.push(imageData);
-      // 履歴の最大数を制限（メモ��管理のため）
+      // 履歴の最大数を制限（メモリ管理のため）
       while (newHistory.length > 50) {
         newHistory.shift();
       }
@@ -926,28 +988,53 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
 
   // Undo/Redo 操作の実装を修正
   const handleUndo = useCallback(() => {
-    if (historyIndex >= 0 && drawingCanvasRef.current) { // 条件を修正
-      const ctx = drawingCanvasRef.current.getContext('2d');
-      if (!ctx || !history[historyIndex]) return;
+    if (!layerManagerRef.current) return;
+    const drawingLayer = layerManagerRef.current.getLayer('drawing');
+    if (!drawingLayer || historyIndex < 0) return;
 
-      if (historyIndex === 0) {
-        // 最初の状態に戻る場合はキャンバスをクリア
-        ctx.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
-      } else {
-        ctx.putImageData(history[historyIndex - 1], 0, 0);
-      }
-      setHistoryIndex(prev => prev - 1);
+    // 現在の描画レイヤーの状態を一時保存
+    const currentVisible = drawingLayer.visible;
+
+    // 一時的に表示を有効にして描画
+    drawingLayer.visible = true;
+
+    if (historyIndex === 0) {
+      drawingLayer.ctx.clearRect(0, 0, drawingLayer.canvas.width, drawingLayer.canvas.height);
+    } else {
+      drawingLayer.ctx.putImageData(history[historyIndex - 1], 0, 0);
     }
+
+    // 表示状態を元に戻す
+    drawingLayer.visible = currentVisible;
+    setHistoryIndex(prev => prev - 1);
+    
+    // 強制的に再レンダリング
+    requestAnimationFrame(() => {
+      layerManagerRef.current?.render();
+    });
   }, [history, historyIndex]);
 
   const handleRedo = useCallback(() => {
-    if (historyIndex < history.length - 1 && drawingCanvasRef.current) {
-      const ctx = drawingCanvasRef.current.getContext('2d');
-      if (!ctx || !history[historyIndex + 1]) return;
+    if (!layerManagerRef.current) return;
+    const drawingLayer = layerManagerRef.current.getLayer('drawing');
+    if (!drawingLayer || historyIndex >= history.length - 1) return;
 
-      ctx.putImageData(history[historyIndex + 1], 0, 0);
-      setHistoryIndex(prev => prev + 1);
-    }
+    // 現在の描画レイヤーの状態を一時保存
+    const currentVisible = drawingLayer.visible;
+
+    // 一時的に表示を有効にして描画
+    drawingLayer.visible = true;
+
+    drawingLayer.ctx.putImageData(history[historyIndex + 1], 0, 0);
+
+    // 表示状態を元に戻す
+    drawingLayer.visible = currentVisible;
+    setHistoryIndex(prev => prev + 1);
+
+    // 強制的に再レンダリング
+    requestAnimationFrame(() => {
+      layerManagerRef.current?.render();
+    });
   }, [history, historyIndex]);
 
   // 初期データ読み込み
@@ -963,6 +1050,16 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
       debouncedSaveDrawingData.cancel();
     };
   }, [debouncedSaveDrawingData]);
+
+  // 描画レイヤーのデータをメモリに保持するための参照を追加
+  const drawingLayerDataRef = useRef<ImageData | null>(null);
+
+  // クリーンアップ時にデータを解放
+  useEffect(() => {
+    return () => {
+      drawingLayerDataRef.current = null;
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
@@ -990,7 +1087,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
             <button
               onClick={() => {
                 setShowGrid(!showGrid);
-                drawImage();
+                requestDraw();
               }}
               className={`${
                 showGrid ? 'bg-gray-900 hover:bg-gray-800' : 'bg-gray-700 hover:bg-gray-600'
@@ -1047,11 +1144,13 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
               }}
             >
               <div style={{ 
-                position: 'relative', // absolute から relative に変更
+                position: 'relative',
+                width: currentImageData ? `${currentImageData.width}px` : '100%',
+                height: currentImageData ? `${currentImageData.height}px` : '100%',
                 transformOrigin: '0 0',
                 transform: `scale(${scale})`
               }}>
-                {/* 既存のcanvasを削除し、LayerManagerが管理するキャンバスのみを使用 */}
+                {/* LayerManager が管理するキャンバスがここに追加される */}
               </div>
             </div>
           </div>
