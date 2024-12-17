@@ -273,47 +273,44 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     }
   }, [currentImageData]);
 
-  // draw関数を定義
-  const draw = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
-    if (!isDrawing.current || !layerManagerRef.current) return;
-    
-    const drawingLayer = layerManagerRef.current.getLayer('drawing');
-    if (!drawingLayer || !drawingLayer.visible) return;
+  // draw関数を修正
+const draw = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
+  if (!isDrawing.current || !layerManagerRef.current) return;
+  
+  const drawingLayer = layerManagerRef.current.getLayer('drawing');
+  if (!drawingLayer || !drawingLayer.visible) return;
 
-    // コンテナの位置を取得
-    const containerRect = containerRef.current?.getBoundingClientRect();
-    if (!containerRect) return;
+  // コンテナの位置を取得
+  const containerRect = containerRef.current?.getBoundingClientRect();
+  if (!containerRect) return;
 
-    // スクロール位置を考慮した座標計算
-    const scrollLeft = containerRef.current?.scrollLeft || 0;
-    const scrollTop = containerRef.current?.scrollTop || 0;
+  // スクロール位置を考慮した座標計算
+  const scrollLeft = containerRef.current?.scrollLeft || 0;
+  const scrollTop = containerRef.current?.scrollTop || 0;
 
-    // マウス座標をキャンバス座標に変換
-    const x = ((e.clientX - containerRect.left + scrollLeft) / scale);
-    const y = ((e.clientY - containerRect.top + scrollTop) / scale);
+  // マウス座標をキャンバス座標に変換
+  const x = ((e.clientX - containerRect.left + scrollLeft) / scale);
+  const y = ((e.clientY - containerRect.top + scrollTop) / scale);
 
-    drawingLayer.ctx.beginPath();
-    if (lastPos.current) {
-      drawingLayer.ctx.moveTo(lastPos.current.x, lastPos.current.y);
-      drawingLayer.ctx.lineTo(x, y);
-    } else {
-      drawingLayer.ctx.moveTo(x, y);
-      drawingLayer.ctx.lineTo(x, y);
-    }
+  drawingLayer.ctx.beginPath();
+  if (lastPos.current) {
+    drawingLayer.ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    drawingLayer.ctx.lineTo(x, y);
+  } else {
+    drawingLayer.ctx.moveTo(x, y);
+    drawingLayer.ctx.lineTo(x, y);
+    // 描画開始時に履歴を保存
+    saveToHistory();
+  }
 
-    drawingLayer.ctx.strokeStyle = currentTool === 'pen' ? 'black' : 'white';
-    drawingLayer.ctx.lineWidth = penSize / scale; // スケールに応じてペンサイズを調整
-    drawingLayer.ctx.stroke();
-    lastPos.current = { x, y };
+  drawingLayer.ctx.strokeStyle = currentTool === 'pen' ? 'black' : 'white';
+  drawingLayer.ctx.lineWidth = penSize / scale;
+  drawingLayer.ctx.stroke();
+  lastPos.current = { x, y };
 
-    // 描画後に明示的にレンダリング
-    layerManagerRef.current.render();
-    
-    // 描画内容を履歴に保存
-    if (!lastPos.current) {
-      saveToHistory();
-    }
-  }, [currentTool, penSize, scale, saveToHistory]);
+  // 描画後に明示的にレンダリング
+  layerManagerRef.current.render();
+}, [currentTool, penSize, scale, saveToHistory]);
 
   // PGMファイルの読み込み処理
   useEffect(() => {
@@ -538,37 +535,40 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     debouncedSaveDrawingData();
   }, [saveToHistory, debouncedSaveDrawingData]);
 
-  // handleMouseUpを定義
-  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (currentTool !== 'none' && isDrawing.current) {
-      isDrawing.current = false;
-      lastPos.current = null;
-      handleDrawingComplete();
-    } else {
-      setIsDragging(false);
-      e.currentTarget.style.cursor = 'default';
-    }
-  }, [currentTool, handleDrawingComplete]);
+  // handleMouseUpを修正
+const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  if (currentTool !== 'none' && isDrawing.current) {
+    isDrawing.current = false;
+    lastPos.current = null;
+    // 描画完了時に履歴を保存
+    handleDrawingComplete();
+  } else {
+    setIsDragging(false);
+    e.currentTarget.style.cursor = 'default';
+  }
+}, [currentTool, handleDrawingComplete]);
 
   // イベントハンドラの実装
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (currentTool !== 'none') {
-      isDrawing.current = true;
-      lastPos.current = null; // 新しい線を開始する前にリセット
-      draw(e);
-    } else {
-      if (!containerRef.current) return;
+  // handleMouseDownを修正
+const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  if (currentTool !== 'none') {
+    isDrawing.current = true;
+    lastPos.current = null;
+    // マウスダウン時に描画を開始
+    draw(e);
+  } else {
+    if (!containerRef.current) return;
 
-      setIsDragging(true);
-      const container = containerRef.current;
-      const rect = container.getBoundingClientRect();
-      setStartX(e.pageX - rect.left);  // offsetLeftの代わりにrect.leftを使用
-      setStartY(e.pageY - rect.top);   // offsetTopの代わりにrect.topを使用
-      setScrollLeft(container.scrollLeft);
-      setScrollTop(container.scrollTop);
-      container.style.cursor = 'grabbing';
-    }
-  }, [currentTool, draw]); // saveToHistoryを依存から削除
+    setIsDragging(true);
+    const container = containerRef.current;
+    const rect = container.getBoundingClientRect();
+    setStartX(e.pageX - rect.left);  // offsetLeftの代わりにrect.leftを使用
+    setStartY(e.pageY - rect.top);   // offsetTopの代わりにrect.topを使用
+    setScrollLeft(container.scrollLeft);
+    setScrollTop(container.scrollTop);
+    container.style.cursor = 'grabbing';
+  }
+}, [currentTool, draw]); // saveToHistoryを依存から削除
 
   // マウス座標計算関数を宣言
   const calculateMousePosition = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
