@@ -230,7 +230,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({
       container
     );
 
-    // 基本レイヤーの作成と初期表示状態の設定
+    // 基本レイヤーの作成
     layerManagerRef.current.createLayer('pgm', 0);
     layerManagerRef.current.createLayer('drawing', 1);
     layerManagerRef.current.createLayer('grid', 2);
@@ -239,8 +239,14 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({
     // 状態を即時反映
     layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
     layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
+
+    // 描画データの復元
+    const drawingLayer = layerManagerRef.current.getLayer('drawing');
+    if (drawingLayer && drawingLayerDataRef.current) {
+      drawingLayer.ctx.putImageData(drawingLayerDataRef.current, 0, 0);
+    }
     
-    // 初期描画を強制
+    // 初期描画
     requestDraw();
   }, [currentImageData, layerVisibility, requestDraw]);
 
@@ -252,26 +258,21 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({
       const drawingLayer = layerManagerRef.current.getLayer('drawing');
       if (!drawingLayer) return;
 
-      // 非表示時のデータバックアップ
-      if (!layerVisibility.drawing) {
-        const layerData = layerManagerRef.current.getLayerData('drawing');
-        if (layerData) {
-          drawingLayerDataRef.current = layerData;
-        }
-      }
-
       // 表示状態の更新
       layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
       layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
 
       // 表示時のデータ復元
       if (layerVisibility.drawing && drawingLayerDataRef.current) {
-        requestAnimationFrame(() => {
-          if (layerManagerRef.current) {
-            layerManagerRef.current.restoreLayerData('drawing', drawingLayerDataRef.current);
-            layerManagerRef.current.render();
-          }
-        });
+        // requestAnimationFrameを使用せず、直接データを復元
+        drawingLayer.ctx.putImageData(drawingLayerDataRef.current, 0, 0);
+        layerManagerRef.current.render();
+      }
+
+      // 非表示時のデータバックアップ
+      if (!layerVisibility.drawing) {
+        const imageData = drawingLayer.ctx.getImageData(0, 0, drawingLayer.canvas.width, drawingLayer.canvas.height);
+        drawingLayerDataRef.current = imageData;
       }
     } catch (error) {
       console.error('Error updating layer visibility:', error);
