@@ -1,7 +1,7 @@
 import React from 'react';
-import { FaPen, FaEraser, FaUndo, FaRedo } from 'react-icons/fa';
+import { FaPen, FaEraser, FaUndo, FaRedo, FaMapMarkerAlt } from 'react-icons/fa';
 
-export type Tool = 'none' | 'pen' | 'eraser';
+export type Tool = 'none' | 'pen' | 'eraser' | 'waypoint';
 
 interface DrawingToolsProps {
   currentTool: Tool;
@@ -14,7 +14,7 @@ interface DrawingToolsProps {
   onRedo: () => void;
 }
 
-const DrawingTools: React.FC<DrawingToolsProps> = ({
+export const DrawingTools: React.FC<DrawingToolsProps> = ({
   currentTool,
   setCurrentTool,
   penSize,
@@ -27,7 +27,6 @@ const DrawingTools: React.FC<DrawingToolsProps> = ({
   return (
     <div className="flex items-center justify-between w-full px-4">
       <div className="flex items-center gap-6">
-        {/* 既存のペンと消しゴムツール */}
         <div className="flex items-center gap-4">
           <button
             onClick={() => setCurrentTool(currentTool === 'pen' ? 'none' : 'pen')}
@@ -47,22 +46,32 @@ const DrawingTools: React.FC<DrawingToolsProps> = ({
           >
             <FaEraser className="w-6 h-6 text-white" />
           </button>
+          <button
+            onClick={() => setCurrentTool(currentTool === 'waypoint' ? 'none' : 'waypoint')}
+            className={`p-3 rounded ${
+              currentTool === 'waypoint' ? 'bg-blue-600' : 'bg-gray-600'
+            } hover:opacity-80 transition-colors`}
+            title="Waypoint"
+          >
+            <FaMapMarkerAlt className="w-6 h-6 text-white" />
+          </button>
         </div>
-        {/* 既存のペンサイズスライダー */}
-        <div className="flex items-center gap-3 min-w-[200px]">
-          <input
-            type="range"
-            min="1"
-            max="50"
-            value={penSize}
-            onChange={(e) => setPenSize(Number(e.target.value))}
-            className="w-full"
-          />
-          <span className="text-sm text-white min-w-[3ch]">{penSize}</span>
-        </div>
+        
+        {currentTool !== 'waypoint' && (
+          <div className="flex items-center gap-3 min-w-[200px]">
+            <input
+              type="range"
+              min="1"
+              max="50"
+              value={penSize}
+              onChange={(e) => setPenSize(Number(e.target.value))}
+              className="w-full"
+            />
+            <span className="text-sm text-white min-w-[3ch]">{penSize}</span>
+          </div>
+        )}
       </div>
       
-      {/* Undo/Redoボタン */}
       <div className="flex items-center gap-4">
         <button
           onClick={onUndo}
@@ -88,5 +97,3 @@ const DrawingTools: React.FC<DrawingToolsProps> = ({
     </div>
   );
 };
-
-export { DrawingTools };

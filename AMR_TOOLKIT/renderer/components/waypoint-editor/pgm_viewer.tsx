@@ -4,6 +4,7 @@ import debounce from 'lodash/debounce';
 import throttle from 'lodash/throttle';
 import { Tool, DrawingTools } from './drawing_tools';
 import { LayerManager } from './layer_manager';
+import { WaypointTool } from './waypoint_tool'; // WaypointToolのインポートを追加
 
 declare global {
   interface Window {
@@ -63,6 +64,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
+  const [waypoints, setWaypoints] = useState<{ x: number; y: number }[]>([]); // Waypointsの状態管理を追加
 
   // パフォーマンス最適化のための参照
   const renderRequestRef = useRef<number>();
@@ -141,6 +143,17 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     ctx.stroke();
   }, [currentImageData, scale]);
 
+  // Waypoint描画関数を追加
+  const drawWaypoints = useCallback((ctx: CanvasRenderingContext2D) => {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillStyle = 'red';
+    waypoints.forEach(({ x, y }) => {
+      ctx.beginPath();
+      ctx.arc(x, y, 5 / scale, 0, 2 * Math.PI);
+      ctx.fill();
+    });
+  }, [waypoints, scale]);
+
   // drawImage関数を定義
   const drawImage = useCallback(() => {
     if (!currentImageData || !layerManagerRef.current) return;
@@ -167,8 +180,13 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
       }
     }
 
+    const waypointLayer = layerManagerRef.current.getLayer('waypoints');
+    if (waypointLayer) {
+      drawWaypoints(waypointLayer.ctx);
+    }
+
     layerManagerRef.current.render();
-  }, [currentImageData, showGrid, drawGrid]);
+  }, [currentImageData, showGrid, drawGrid, drawWaypoints]);
 
   // requestDraw関数を定義
   const requestDraw = useCallback(() => {
@@ -208,6 +226,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
     layerManagerRef.current.createLayer('pgm', 0);
     layerManagerRef.current.createLayer('drawing', 1);
     layerManagerRef.current.createLayer('grid', 2);
+    layerManagerRef.current.createLayer('waypoints', 3);
 
     // 状態を即時反映
     layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
@@ -221,27 +240,34 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
   useEffect(() => {
     if (!layerManagerRef.current) return;
 
-    const drawingLayer = layerManagerRef.current.getLayer('drawing');
-    if (!drawingLayer) return;
+    try {
+      const drawingLayer = layerManagerRef.current.getLayer('drawing');
+      if (!drawingLayer) return;
 
-    if (!layerVisibility.drawing) {
-      // 非表示時にデータをバックアップ
-      drawingLayerDataRef.current = layerManagerRef.current.getLayerData('drawing');
-    } else if (drawingLayerDataRef.current) {
-      // 表示時にデータを復元
-      layerManagerRef.current.restoreLayerData('drawing', drawingLayerDataRef.current);
-    }
-
-    // 表示状態を更新
-    layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
-    layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
-
-    // 強制的に再描画
-    requestAnimationFrame(() => {
-      if (layerManagerRef.current) {
-        layerManagerRef.current.render();
+      // 非表示時のデータバックアップ
+      if (!layerVisibility.drawing) {
+        const layerData = layerManagerRef.current.getLayerData('drawing');
+        if (layerData) {
+          drawingLayerDataRef.current = layerData;
+        }
       }
-    });
+
+      // 表示状態の更新
+      layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
+      layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
+
+      // 表示時のデータ復元
+      if (layerVisibility.drawing && drawingLayerDataRef.current) {
+        requestAnimationFrame(() => {
+          if (layerManagerRef.current) {
+            layerManagerRef.current.restoreLayerData('drawing', drawingLayerDataRef.current);
+            layerManagerRef.current.render();
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error updating layer visibility:', error);
+    }
   }, [layerVisibility]);
 
   useEffect(() => {
@@ -551,6 +577,20 @@ const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
   // イベントハンドラの実装
   // handleMouseDownを修正
 const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  if (currentTool === 'waypoint') {
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+
+    const scrollLeft = containerRef.current?.scrollLeft || 0;
+    const scrollTop = containerRef.current?.scrollTop || 0;
+
+    const x = (e.clientX - containerRect.left + scrollLeft) / scale;
+    const y = (e.clientY - containerRect.top + scrollTop) / scale;
+
+    setWaypoints(prev => [...prev, { x, y }]);
+    requestDraw(); // Waypointを追加したら再描画
+    return; // Waypointモード時は他の処理を実行しない
+  }
   if (currentTool !== 'none') {
     isDrawing.current = true;
     lastPos.current = null;
@@ -568,7 +608,7 @@ const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     setScrollTop(container.scrollTop);
     container.style.cursor = 'grabbing';
   }
-}, [currentTool, draw]); // saveToHistoryを依存から削除
+}, [currentTool, draw, scale, requestDraw]); // saveToHistoryを依存から削除
 
   // マウス座標計算関数を宣言
   const calculateMousePosition = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -1169,6 +1209,12 @@ const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
             onUndo={handleUndo}
             onRedo={handleRedo}
           />
+          {waypoints.length > 0 && (
+            <WaypointTool
+              waypoints={waypoints}
+              setWaypoints={setWaypoints}
+            />
+          )}
         </div>
       </div>
     </div>
