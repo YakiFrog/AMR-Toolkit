@@ -23,6 +23,8 @@ interface PGMViewerProps {
     pgm: boolean;
     drawing: boolean;
   };
+  waypoints: { x: number; y: number }[]; // 追加
+  setWaypoints: React.Dispatch<React.SetStateAction<{ x: number; y: number }[]>>; // 追加
 }
 
 // より厳密な型定義を追加（名前を変更）
@@ -33,7 +35,14 @@ type PGMImageData = {
   pixelData: Uint8Array;
 };
 
-export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoadError, layerVisibility }) => {
+export const PGMViewer: React.FC<PGMViewerProps> = ({ 
+  file, 
+  onLoadSuccess, 
+  onLoadError, 
+  layerVisibility,
+  waypoints,
+  setWaypoints
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -64,7 +73,6 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({ file, onLoadSuccess, onLoa
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
-  const [waypoints, setWaypoints] = useState<{ x: number; y: number }[]>([]); // Waypointsの状態管理を追加
 
   // パフォーマンス最適化のための参照
   const renderRequestRef = useRef<number>();
@@ -1163,59 +1171,48 @@ const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       </div>
 
       {/* メインビューア領域 */}
-      <div className="flex-1 relative overflow-hidden"> {/* overflow-hidden を追加 */}
-        <div className="absolute inset-0 mb-20"> {/* 絶対配置を維持 */}
-          <div className="flex h-full"> {/* h-full を追加 */}
-            {/* メインビューア */}
-            <div 
-              id="pgm-container"
-              ref={containerRef}
-              className="flex-1 overflow-auto border border-gray-300 rounded bg-gray-800"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onWheel={handleWheel}
-              style={{ 
-                cursor: currentTool === 'pen' ? 'crosshair' : 
-                        currentTool === 'eraser' ? 'cell' :
-                        isDragging ? 'grabbing' : 'default',
-                position: 'relative' // 追加
-              }}
-            >
-              <div style={{ 
-                position: 'relative',
-                width: currentImageData ? `${currentImageData.width}px` : '100%',
-                height: currentImageData ? `${currentImageData.height}px` : '100%',
-                transformOrigin: '0 0',
-                transform: `scale(${scale})`
-              }}>
-                {/* LayerManager が管理するキャンバスがここに追加される */}
-              </div>
-            </div>
-          </div>
-          <CoordinateAxes />
-        </div>
-
-        {/* 下部ツールパネル */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gray-800 p-3 mt-2 shadow-lg rounded-b">
-          <DrawingTools
-            currentTool={currentTool}
-            setCurrentTool={setCurrentTool}
-            penSize={penSize}
-            setPenSize={setPenSize}
-            canUndo={historyIndex > 0}
-            canRedo={historyIndex < history.length - 1}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
+      <div className="flex-1 relative overflow-hidden"> {/* この部分が重要 */}
+        <div 
+          id="pgm-container"
+          ref={containerRef}
+          className="absolute inset-0 overflow-auto bg-gray-800"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+          style={{ 
+            cursor: currentTool === 'pen' ? 'crosshair' : 
+                    currentTool === 'eraser' ? 'cell' :
+                    currentTool === 'waypoint' ? 'crosshair' :
+                    isDragging ? 'grabbing' : 'default'
+          }}
+        >
+          <div 
+            className="relative"
+            style={{ 
+              width: currentImageData ? `${currentImageData.width}px` : '100%',
+              height: currentImageData ? `${currentImageData.height}px` : '100%',
+              transformOrigin: '0 0',
+              transform: `scale(${scale})`
+            }}
           />
-          {waypoints.length > 0 && (
-            <WaypointTool
-              waypoints={waypoints}
-              setWaypoints={setWaypoints}
-            />
-          )}
         </div>
+        <CoordinateAxes />
+      </div>
+
+      {/* 下部ツールパネル */}
+      <div className="bg-gray-800 p-3 shadow-lg rounded-b">
+        <DrawingTools
+          currentTool={currentTool}
+          setCurrentTool={setCurrentTool}
+          penSize={penSize}
+          setPenSize={setPenSize}
+          canUndo={historyIndex > 0}
+          canRedo={historyIndex < history.length - 1}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+        />
       </div>
     </div>
   );

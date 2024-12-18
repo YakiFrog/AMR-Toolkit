@@ -6,6 +6,7 @@ import { Sidebar } from '../components/common/sidebar';
 import { PGMViewer } from '../components/waypoint-editor/pgm_viewer';
 import { getDB } from '../db'; // DB関連のインポートを追加
 import { LayerPanel } from '../components/waypoint-editor/layer_panel';
+import { WaypointTool } from '../components/waypoint-editor/waypoint_tool';
 
 export default function PGMViewerPage() {
   const [selectedFile, setSelectedFile] = useState<File | undefined>(undefined);
@@ -199,6 +200,8 @@ export default function PGMViewerPage() {
     transition: isDragging.current ? 'none' : 'width 0.1s ease-out'
   }), [resizeRatio]);
 
+  const [waypoints, setWaypoints] = useState<{ x: number; y: number }[]>([]); // 型定義を追加
+  
   const [layers, setLayers] = useState([
     { id: 'pgm', name: 'PGMマップ', visible: true, color: '#666666' },
     { id: 'drawing', name: '描写レイヤー', visible: true, color: '#3B82F6' }
@@ -259,6 +262,8 @@ export default function PGMViewerPage() {
                     key={selectedFile.name} // キーを追加して再マウントを制御
                     file={selectedFile}
                     layerVisibility={layerVisibility}
+                    waypoints={waypoints}
+                    setWaypoints={setWaypoints}
                     onLoadSuccess={() => {
                       // 初回のみ通知を表示
                       if (!sessionStorage.getItem(`loaded-${selectedFile.name}`)) {
@@ -296,14 +301,19 @@ export default function PGMViewerPage() {
                     layers={layers}
                     onToggleLayer={handleToggleLayer}
                   />
-                  <div className="bg-white rounded-lg shadow-lg p-6">
-                    <h2 className="text-xl font-semibold text-gray-800 mb-4">操作方法</h2>
-                    <ul className="space-y-2 text-gray-600">
+                  
+                  <WaypointTool
+                    waypoints={waypoints}
+                    setWaypoints={setWaypoints}
+                  />
+
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <h2 className="text-xl font-semibold text-gray-100 mb-4">操作方法</h2>
+                    <ul className="space-y-2 text-gray-300">
                       <li>• ドラッグで画像を移動</li>
                       <li>• Shiftキー + スクロールでズーム</li>
                       <li>• グリッド表示で座標確認</li>
                       <li>• PGMファイルをドラッグ&ドロップで読み込み</li>
-                      <p className="text-sm">または、クリックしてファイルを選択</p>
                     </ul>
                   </div>
                 </div>
