@@ -174,29 +174,32 @@ export const Sidebar: React.FC = () => {
   };
   
   return (
-    <div className="w-16 h-screen bg-gray-800 fixed left-0 top-0 flex flex-col items-center py-4">
-      {navItems.map((item) => (
-        <div
-          key={item.id}
-          ref={el => { itemRefs.current[item.id] = el }}
-          className="relative mb-8"
-        >
-          {draggedOver === item.id && dragPosition === 'before' && (
-            <div className="absolute w-full h-1 bg-blue-500 -top-2 rounded-full" />
-          )}
-          <NavItem 
-            {...item}
-            isActive={router.pathname === item.href}
-            onDragStart={handleDragStart}
-            onDragOver={(e) => handleDragOver(e, item)}
-            onDrop={(e) => handleDrop(e, item)}
-            onDragLeave={handleDragLeave}  // 追加
-          />
-          {draggedOver === item.id && dragPosition === 'after' && (
-            <div className="absolute w-full h-1 bg-blue-500 -bottom-2 rounded-full" />
-          )}
-        </div>
-      ))}
+    <div className="fixed top-0 left-0 h-screen w-16 flex flex-col items-center bg-neutral-900 text-white shadow-lg z-50">
+      {/* アイコンを含むコンテナに上部パディングを追加 */}
+      <div className="flex flex-col items-center gap-6 pt-3 w-full">
+        {navItems.map((item) => (
+          <div
+            key={item.id}
+            ref={el => { itemRefs.current[item.id] = el }}
+            className="relative w-full px-2"
+          >
+            {draggedOver === item.id && dragPosition === 'before' && (
+              <div className="absolute w-full h-1 bg-blue-500 -top-3 rounded-full" />
+            )}
+            <NavItem 
+              {...item}
+              isActive={router.pathname === item.href}
+              onDragStart={handleDragStart}
+              onDragOver={(e) => handleDragOver(e, item)}
+              onDrop={(e) => handleDrop(e, item)}
+              onDragLeave={handleDragLeave}
+            />
+            {draggedOver === item.id && dragPosition === 'after' && (
+              <div className="absolute w-full h-1 bg-blue-500 -bottom-3 rounded-full" />
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

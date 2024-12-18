@@ -25,35 +25,29 @@ export const DrawingTools: React.FC<DrawingToolsProps> = ({
   onRedo,
 }) => {
   return (
-    <div className="flex items-center justify-between w-full px-4">
+    <div className="flex items-center justify-between w-full px-4 py-2 bg-neutral-900 rounded-lg">
       <div className="flex items-center gap-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => setCurrentTool(currentTool === 'pen' ? 'none' : 'pen')}
-            className={`p-3 rounded ${
-              currentTool === 'pen' ? 'bg-blue-600' : 'bg-gray-600'
-            } hover:opacity-80 transition-colors`}
+            className={`tool-button ${currentTool === 'pen' ? 'tool-active' : 'text-slate-200'}`}
             title="ペン"
           >
-            <FaPen className="w-6 h-6 text-white" />
+            <FaPen className="w-5 h-5" />
           </button>
           <button
             onClick={() => setCurrentTool(currentTool === 'eraser' ? 'none' : 'eraser')}
-            className={`p-3 rounded ${
-              currentTool === 'eraser' ? 'bg-blue-600' : 'bg-gray-600'
-            } hover:opacity-80 transition-colors`}
+            className={`tool-button ${currentTool === 'eraser' ? 'tool-active' : 'text-slate-200'}`}
             title="消しゴム"
           >
-            <FaEraser className="w-6 h-6 text-white" />
+            <FaEraser className="w-5 h-5" />
           </button>
           <button
             onClick={() => setCurrentTool(currentTool === 'waypoint' ? 'none' : 'waypoint')}
-            className={`p-3 rounded ${
-              currentTool === 'waypoint' ? 'bg-blue-600' : 'bg-gray-600'
-            } hover:opacity-80 transition-colors`}
+            className={`tool-button ${currentTool === 'waypoint' ? 'tool-active' : 'text-slate-200'}`}
             title="Waypoint"
           >
-            <FaMapMarkerAlt className="w-6 h-6 text-white" />
+            <FaMapMarkerAlt className="w-5 h-5" />
           </button>
         </div>
         
@@ -65,9 +59,9 @@ export const DrawingTools: React.FC<DrawingToolsProps> = ({
               max="50"
               value={penSize}
               onChange={(e) => setPenSize(Number(e.target.value))}
-              className="w-full"
+              className="custom-slider"
             />
-            <span className="text-sm text-white min-w-[3ch]">{penSize}</span>
+            <span className="text-sm text-slate-200 min-w-[3ch]">{penSize}</span>
           </div>
         )}
       </div>
@@ -76,22 +70,22 @@ export const DrawingTools: React.FC<DrawingToolsProps> = ({
         <button
           onClick={onUndo}
           disabled={!canUndo}
-          className={`p-3 rounded ${
-            canUndo ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-800 cursor-not-allowed'
-          } transition-colors`}
+          className={`tool-button ${
+            canUndo ? 'text-slate-200 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'
+          }`}
           title="元に戻す"
         >
-          <FaUndo className={`w-6 h-6 ${canUndo ? 'text-white' : 'text-gray-600'}`} />
+          <FaUndo className="w-5 h-5" />
         </button>
         <button
           onClick={onRedo}
           disabled={!canRedo}
-          className={`p-3 rounded ${
-            canRedo ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-800 cursor-not-allowed'
-          } transition-colors`}
+          className={`tool-button ${
+            canRedo ? 'text-slate-200 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'
+          }`}
           title="やり直し"
         >
-          <FaRedo className={`w-6 h-6 ${canRedo ? 'text-white' : 'text-gray-600'}`} />
+          <FaRedo className="w-5 h-5" />
         </button>
       </div>
     </div>

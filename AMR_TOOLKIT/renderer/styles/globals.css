@@ -4,8 +4,19 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-black;
+    @apply bg-neutral-50 text-black;
   }
+}
+
+/* カスタムカラーパレット */
+:root {
+  --primary: #2563eb;    /* メインカラー（青） */
+  --secondary: #475569;  /* セカンダリーカラー（グレー） */
+  --accent: #3b82f6;    /* アクセントカラー（明るい青） */
+  --background: #f8fafc; /* 背景色（薄いグレー） */
+  --surface: #ffffff;    /* 表面色（白） */
+  --text: #1e293b;      /* テキスト（濃いグレー） */
+  --text-secondary: #64748b; /* サブテキスト（中間グレー） */
 }
 
 @layer components {
@@ -31,6 +42,7 @@
 
   .custom-slider {
     @apply w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer;
+    -webkit-appearance: none;
   }
 
   .custom-slider::-webkit-slider-thumb {
@@ -44,5 +56,15 @@
 
   .scale-display {
     @apply bg-gray-700 text-white px-3 py-1 rounded-md min-w-[4em] text-center font-medium text-sm;
+  }
+
+  /* アクティブなツールのスタイル */
+  .tool-active {
+    @apply bg-neutral-700 text-white;
+  }
+
+  /* ツールボタンの共通スタイル */
+  .tool-button {
+    @apply p-2 rounded transition-all duration-200 text-white hover:bg-neutral-600/20;
   }
 }

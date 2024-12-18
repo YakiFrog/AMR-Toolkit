@@ -226,25 +226,16 @@ export default function PGMViewerPage() {
       </Head>
       <ToastContainer />
       <Sidebar />
-      <div className="ml-16 min-h-screen bg-gray-50 p-8">
-        <div className="max-w-full mx-auto h-[calc(100vh-120px)]"> {/* 高さを固定値に変更 */}
-          <h1 className="text-4xl font-bold text-gray-800 mb-4">
-            PGM ビューアー
-          </h1>
-          <p className="text-xl text-gray-600 mb-4">
-            PGMファイルを表示して編集できます。グリッド表示や座標確認が可能です。
-          </p>
+      <div className="ml-16 min-h-screen bg-neutral-50 p-8">
+        <div className="max-w-full mx-auto h-[calc(100vh-120px)]">
+          <h1 className="text-4xl font-bold text-neutral-800 mb-2">PGM ビューアー</h1>
+          <p className="text-neutral-600 mb-4">PGMファイルを表示して編集できます。</p>
 
-          {/* グリッドコンテナをrefで参照できるように */}
-          <div 
-            ref={containerRef}
-            className="h-[calc(100vh-220px)]" /* 高さを調整 */
-          >
-            {/* gapを調整し、space-x-2を追加 */}
+          <div ref={containerRef} className="h-[calc(100vh-220px)]">
             <div className="flex h-full space-x-2">
-              {/* PGMビューアー - calcを調整 */}
+              {/* PGMビューアー部分 */}
               <div 
-                className="bg-white rounded-lg shadow-lg overflow-hidden h-full"
+                className="bg-white rounded-lg shadow-lg overflow-hidden h-full border border-neutral-200"
                 style={containerStyle}
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
@@ -284,16 +275,16 @@ export default function PGMViewerPage() {
                 )}
               </div>
 
-              {/* リサイザー - 幅を4pxに調整 */}
+              {/* リサイザー */}
               <div
                 ref={resizeRef}
-                className="w-1.5 hover:bg-blue-500 cursor-col-resize active:bg-blue-600 transition-colors rounded-full bg-gray-300 flex-shrink-0"
+                className="w-1 hover:bg-neutral-400 cursor-col-resize active:bg-neutral-500 transition-colors bg-neutral-200 flex-shrink-0"
                 onMouseDown={startResize}
               />
 
-              {/* 右サイドパネル - LayerPanel を追加 */}
+              {/* 右サイドパネル */}
               <div 
-                className="bg-white rounded-lg shadow-lg p-6"
+                className="bg-white rounded-lg shadow-lg p-6 border border-neutral-200"
                 style={{ width: `calc(${100 - resizeRatio}% - 2px)` }}
               >
                 <div className="space-y-4">
@@ -307,9 +298,9 @@ export default function PGMViewerPage() {
                     setWaypoints={setWaypoints}
                   />
 
-                  <div className="bg-gray-700 rounded-lg p-4">
-                    <h2 className="text-xl font-semibold text-gray-100 mb-4">操作方法</h2>
-                    <ul className="space-y-2 text-gray-300">
+                  <div className="bg-neutral-100 rounded-lg p-4 border border-neutral-200">
+                    <h2 className="text-lg font-semibold text-neutral-800 mb-3">操作方法</h2>
+                    <ul className="space-y-2 text-neutral-600">
                       <li>• ドラッグで画像を移動</li>
                       <li>• Shiftキー + スクロールでズーム</li>
                       <li>• グリッド表示で座標確認</li>
