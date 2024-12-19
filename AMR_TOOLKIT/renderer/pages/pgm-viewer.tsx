@@ -200,7 +200,7 @@ export default function PGMViewerPage() {
     transition: isDragging.current ? 'none' : 'width 0.1s ease-out'
   }), [resizeRatio]);
 
-  const [waypoints, setWaypoints] = useState<{ x: number; y: number }[]>([]); // 型定義を追加
+  const [waypoints, setWaypoints] = useState<{ x: number; y: number; theta: number }[]>([]); // 型定義を追加
   
   const [layers, setLayers] = useState([
     { id: 'pgm', name: 'PGMマップ', visible: true, color: '#666666' },

@@ -1,3 +1,5 @@
+import { LayerConfig } from '../../types/viewer';
+
 export interface Layer {
   id: string;
   canvas: HTMLCanvasElement;
@@ -7,9 +9,11 @@ export interface Layer {
 }
 
 export class LayerManager {
-  private layers: Map<string, Layer> = new Map();
+  private layers: Map<string, LayerConfig> = new Map();
   private mainCanvas: HTMLCanvasElement;
   private mainCtx: CanvasRenderingContext2D;
+  private renderRAF: number | null = null;
+  private renderQueue: Set<string> = new Set(); // 描画待ちのレイヤーを管理
 
   constructor(width: number, height: number, containerElement: HTMLElement) {
     this.mainCanvas = document.createElement('canvas');
@@ -70,7 +74,7 @@ export class LayerManager {
     layer.visible = visible;
     
     // 即時再描画を強制
-    this.render();
+    this.requestRender(id);
   }
 
   // レイヤーデータをバックアップするためのメソッドを追加
@@ -89,14 +93,31 @@ export class LayerManager {
     if (!layer) return;
 
     layer.ctx.putImageData(imageData, 0, 0);
-    this.render();
+    this.requestRender(id);
   }
 
-  render() {
-    this.mainCtx.clearRect(0, 0, this.mainCanvas.width, this.mainCanvas.height);
+  private requestRender(layerId?: string) {
+    if (layerId) {
+      this.renderQueue.add(layerId);
+    }
     
-    // 背景を設定（透明な代わりに暗いグレー）
-    this.mainCtx.fillStyle = '#1f2937'; // tailwindのbg-gray-800相当
+    if (this.renderRAF !== null) {
+      return;
+    }
+    
+    this.renderRAF = requestAnimationFrame(() => {
+      this.render();
+      this.renderQueue.clear();
+      this.renderRAF = null;
+    });
+  }
+
+  // render メソッドを最適化
+  render() {
+    if (!this.mainCtx) return;
+
+    this.mainCtx.clearRect(0, 0, this.mainCanvas.width, this.mainCanvas.height);
+    this.mainCtx.fillStyle = '#1f2937';
     this.mainCtx.fillRect(0, 0, this.mainCanvas.width, this.mainCanvas.height);
     
     // レイヤーを描画
@@ -125,6 +146,6 @@ export class LayerManager {
         layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
       });
     }
-    this.render();
+    this.requestRender(id);
   }
 }

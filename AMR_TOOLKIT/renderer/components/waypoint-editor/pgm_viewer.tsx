@@ -23,8 +23,8 @@ interface PGMViewerProps {
     pgm: boolean;
     drawing: boolean;
   };
-  waypoints: { x: number; y: number }[]; // 追加
-  setWaypoints: React.Dispatch<React.SetStateAction<{ x: number; y: number }[]>>; // 追加
+  waypoints: { x: number; y: number; theta: number }[]; // 追加
+  setWaypoints: React.Dispatch<React.SetStateAction<{ x: number; y: number; theta: number }[]>>; // 追加
 }
 
 // より厳密な型定義を追加（名前を変更）
@@ -151,16 +151,82 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({
     ctx.stroke();
   }, [currentImageData, scale]);
 
-  // Waypoint描画関数を追加
-  const drawWaypoints = useCallback((ctx: CanvasRenderingContext2D) => {
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    ctx.fillStyle = 'red';
-    waypoints.forEach(({ x, y }) => {
-      ctx.beginPath();
-      ctx.arc(x, y, 5 / scale, 0, 2 * Math.PI);
-      ctx.fill();
-    });
-  }, [waypoints, scale]);
+  // Waypoint配置用の一時状態を追加
+  const [tempWaypoint, setTempWaypoint] = useState<{ x: number; y: number } | null>(null);
+
+  // 矢印を描画する関数を修正
+const drawArrow = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, theta: number, index?: number) => {
+  const arrowLength = 30 / scale;
+  const arrowWidth = 12 / scale;
+  const lineWidth = 3 / scale;
+    
+  // 矢印の描画（既存のコード）
+  const endX = x + arrowLength * Math.cos(theta);
+  const endY = y + arrowLength * Math.sin(theta);
+    
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(endX, endY);
+  ctx.strokeStyle = 'red';
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+    
+  // 矢印の頭を描画
+  const angle = Math.PI / 6;
+  ctx.beginPath();
+  ctx.moveTo(endX, endY);
+  ctx.lineTo(
+    endX - arrowWidth * Math.cos(theta - angle),
+    endY - arrowWidth * Math.sin(theta - angle)
+  );
+  ctx.lineTo(
+    endX - arrowWidth * Math.cos(theta + angle),
+    endY - arrowWidth * Math.sin(theta + angle)
+  );
+  ctx.closePath();
+  ctx.fillStyle = 'red';
+  ctx.fill();
+
+  // Waypointの番号を描画
+  if (typeof index === 'number') {
+    ctx.save();
+    ctx.font = `${12 / scale}px Arial`;
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // 番号を円で囲む
+    const textWidth = 16 / scale;
+    ctx.beginPath();
+    ctx.arc(x, y, textWidth, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+    ctx.fill();
+    
+    // 番号を描画
+    ctx.fillStyle = 'white';
+    ctx.fillText(`${index + 1}`, x, y);
+    ctx.restore();
+  }
+}, [scale]);
+
+  // Waypoint描画関数を修正
+const drawWaypoints = useCallback((ctx: CanvasRenderingContext2D) => {
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+  // 確定済みのWaypointを描画
+  waypoints.forEach(({ x, y, theta }, index) => {
+    drawArrow(ctx, x, y, theta, index); // indexを追加
+  });
+    
+  // 配置中のWaypointを描画
+  if (tempWaypoint && mousePos.imageX !== -1) {
+    const theta = Math.atan2(
+      mousePos.imageY - tempWaypoint.y,
+      mousePos.imageX - tempWaypoint.x
+    );
+    drawArrow(ctx, tempWaypoint.x, tempWaypoint.y, theta);
+  }
+}, [waypoints, tempWaypoint, mousePos.imageX, mousePos.imageY, drawArrow]);
 
   // drawImage関数を定義
   const drawImage = useCallback(() => {
@@ -572,6 +638,25 @@ const draw = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
 
   // handleMouseUpを修正
 const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  if (currentTool === 'waypoint' && tempWaypoint) {
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+
+    const scrollLeft = containerRef.current?.scrollLeft || 0;
+    const scrollTop = containerRef.current?.scrollTop || 0;
+
+    const endX = (e.clientX - containerRect.left + scrollLeft) / scale;
+    const endY = (e.clientY - containerRect.top + scrollTop) / scale;
+
+    // 角度を計算
+    const theta = Math.atan2(endY - tempWaypoint.y, endX - tempWaypoint.x);
+
+    // Waypointを追加
+    setWaypoints(prev => [...prev, { ...tempWaypoint, theta }]);
+    setTempWaypoint(null);
+    requestDraw();
+    return;
+  }
   if (currentTool !== 'none' && isDrawing.current) {
     isDrawing.current = false;
     lastPos.current = null;
@@ -581,7 +666,7 @@ const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     setIsDragging(false);
     e.currentTarget.style.cursor = 'default';
   }
-}, [currentTool, handleDrawingComplete]);
+}, [currentTool, handleDrawingComplete, scale, tempWaypoint, setWaypoints, requestDraw]);
 
   // イベントハンドラの実装
   // handleMouseDownを修正
@@ -596,9 +681,9 @@ const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const x = (e.clientX - containerRect.left + scrollLeft) / scale;
     const y = (e.clientY - containerRect.top + scrollTop) / scale;
 
-    setWaypoints(prev => [...prev, { x, y }]);
-    requestDraw(); // Waypointを追加したら再描画
-    return; // Waypointモード時は他の処理を実行しない
+    // クリック位置を一時保存
+    setTempWaypoint({ x, y });
+    return;
   }
   if (currentTool !== 'none') {
     isDrawing.current = true;
@@ -617,7 +702,7 @@ const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     setScrollTop(container.scrollTop);
     container.style.cursor = 'grabbing';
   }
-}, [currentTool, draw, scale, requestDraw]); // saveToHistoryを依存から削除
+}, [currentTool, draw, scale]); // saveToHistoryを依存から削除
 
   // マウス座標計算関数を宣言
   const calculateMousePosition = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -657,24 +742,65 @@ const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     };
   }, [currentImageData, scale]);
 
-  // マウス移動のベース処理を修正
-  const handleMouseMoveBase = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault(); // イベントのデフォルト動作を防止
-    const position = calculateMousePosition(e);
-    setMousePos(position);
+  // スクロール状態を管理するための参照を追加
+const scrollStateRef = useRef({
+  scrollLeft: 0,
+  scrollTop: 0
+});
 
-    if (currentTool !== 'none' && isDrawing.current) {
-      draw(e);
-    } else if (isDragging && containerRef.current) {
+// マウス移動のベース処理を最適化
+const handleMouseMoveBase = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  e.preventDefault();
+  const now = performance.now();
+  
+  // スロットリングを適用
+  if (now - lastScrollRef.current < SCROLL_THROTTLE_MS) {
+    return;
+  }
+  
+  const position = calculateMousePosition(e);
+  setMousePos(position);
+
+  if (currentTool !== 'none' && isDrawing.current) {
+    draw(e);
+  } else if (isDragging && containerRef.current) {
+    if (scrollRAFRef.current) {
+      cancelAnimationFrame(scrollRAFRef.current);
+    }
+
+    scrollRAFRef.current = requestAnimationFrame(() => {
       const container = containerRef.current;
+      if (!container) return;
+      
       const rect = container.getBoundingClientRect();
       const dragX = e.pageX - rect.left;
       const dragY = e.pageY - rect.top;
 
-      container.scrollLeft = scrollLeft - (dragX - startX);
-      container.scrollTop = scrollTop - (dragY - startY);
-    }
-  }, [calculateMousePosition, isDragging, scrollLeft, scrollTop, startX, startY, currentTool, draw]);
+      // スクロール位置を参照経由で更新
+      const newScrollLeft = scrollLeft - (dragX - startX);
+      const newScrollTop = scrollTop - (dragY - startY);
+      
+      container.scrollLeft = newScrollLeft;
+      container.scrollTop = newScrollTop;
+      
+      // 状態を参照に保存
+      scrollStateRef.current = {
+        scrollLeft: newScrollLeft,
+        scrollTop: newScrollTop
+      };
+      
+      lastScrollRef.current = now;
+    });
+  }
+}, [calculateMousePosition, isDragging, scrollLeft, scrollTop, startX, startY, currentTool, draw]);
+
+// スクロール位置が変更されたときの処理を追加
+useEffect(() => {
+  if (containerRef.current) {
+    containerRef.current.scrollLeft = scrollStateRef.current.scrollLeft;
+    containerRef.current.scrollTop = scrollStateRef.current.scrollTop;
+  }
+}, [scrollStateRef.current]);
 
   // スロットル処理の適用
   const throttledMouseMove = useMemo(
@@ -682,10 +808,46 @@ const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     [handleMouseMoveBase]
   );
 
+  // マウス移動のベース処理を最適化 (新しい実装を使用)
+  const handleMouseMoveOptimized = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const now = performance.now();
+    
+    // スロットリングを適用
+    if (now - lastScrollRef.current < SCROLL_THROTTLE_MS) {
+      return;
+    }
+    
+    const position = calculateMousePosition(e);
+    setMousePos(position);
+  
+    if (currentTool !== 'none' && isDrawing.current) {
+      draw(e);
+    } else if (isDragging && containerRef.current) {
+      if (scrollRAFRef.current) {
+        cancelAnimationFrame(scrollRAFRef.current);
+      }
+  
+      scrollRAFRef.current = requestAnimationFrame(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        
+        const rect = container.getBoundingClientRect();
+        const dragX = e.pageX - rect.left;
+        const dragY = e.pageY - rect.top;
+  
+        container.scrollLeft = scrollLeft - (dragX - startX);
+        container.scrollTop = scrollTop - (dragY - startY);
+        
+        lastScrollRef.current = now;
+      });
+    }
+  }, [calculateMousePosition, isDragging, scrollLeft, scrollTop, startX, startY, currentTool, draw]);
+
   // マウス移動ハンドラ
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    throttledMouseMove(e);
-  }, [throttledMouseMove]);
+    handleMouseMoveOptimized(e);
+  }, [handleMouseMoveOptimized]);
 
   // クリーンアップ処理の統合
   useEffect(() => {
@@ -1109,6 +1271,194 @@ const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       drawingLayerDataRef.current = null;
     };
   }, []);
+
+  // レンダリング最適化のための追加
+const RENDER_THROTTLE_MS = 16; // 約60FPS
+const SAVE_DEBOUNCE_MS = 500;
+const MOUSE_MOVE_THROTTLE_MS = 16;
+
+// パフォーマンス監視用
+const performanceRef = useRef({
+  lastRenderTime: 0,
+  frameCount: 0,
+  fps: 0,
+});
+
+// レンダリング最適化
+const optimizedRequestDraw = useCallback(() => {
+  if (renderRequestRef.current) {
+    cancelAnimationFrame(renderRequestRef.current);
+  }
+
+  const now = performance.now();
+  if (now - performanceRef.current.lastRenderTime >= RENDER_THROTTLE_MS) {
+    renderRequestRef.current = requestAnimationFrame(() => {
+      drawImage();
+      performanceRef.current.lastRenderTime = now;
+      performanceRef.current.frameCount++;
+    });
+  }
+}, [drawImage]);
+
+// メモリ使用量の最適化
+const cleanupUnusedResources = useCallback(() => {
+  if (history.length > 50) {
+    setHistory(prev => prev.slice(-50));
+  }
+  
+  // 使用していないキャンバスのクリーンアップ
+  if (offscreenCanvasRef.current && !drawingRef.current) {
+    offscreenCanvasRef.current = null;
+  }
+}, [history]);
+
+// レイヤーマネージャーの最適化
+useEffect(() => {
+  if (layerManagerRef.current) {
+    // WebGLレンダリングの使用を試みる
+    try {
+      const canvas = layerManagerRef.current.getMainCanvas();
+      const gl = canvas.getContext('webgl2');
+      if (gl) {
+        // WebGLコンテキストが利用可能な場合の処理
+        // ...WebGL specific code...
+      }
+    } catch (error) {
+      console.warn('WebGL not available, falling back to 2D context');
+    }
+  }
+}, []);
+
+// イメージデータの処理を最適化
+const processImageData = useCallback((imageData: ImageData) => {
+  // Web Workerを使用してバックグラウンドで処理
+  const worker = new Worker(new URL('./imageProcessor.worker', import.meta.url));
+  
+  worker.onmessage = (e) => {
+    const processedData = e.data;
+    // 処理済みデータを使用
+    // ...処理後の描画など
+  };
+  
+  worker.postMessage({ imageData });
+}, []);
+
+// マウス座標計算の最適化
+const optimizedCalculateMousePosition = useMemo(() => {
+  return throttle(calculateMousePosition, MOUSE_MOVE_THROTTLE_MS, {
+    leading: true,
+    trailing: true
+  });
+}, [calculateMousePosition]);
+
+// 定期的なクリーンアップとパフォーマンスモニタリング
+useEffect(() => {
+  const cleanupInterval = setInterval(() => {
+    cleanupUnusedResources();
+    
+    // FPS計算
+    const now = performance.now();
+    const elapsed = now - performanceRef.current.lastRenderTime;
+    if (elapsed >= 1000) {
+      performanceRef.current.fps = performanceRef.current.frameCount;
+      performanceRef.current.frameCount = 0;
+      performanceRef.current.lastRenderTime = now;
+    }
+  }, 1000);
+
+  return () => clearInterval(cleanupInterval);
+}, [cleanupUnusedResources]);
+
+// 定数を追加
+const RENDER_BATCH_MS = 16; // 約60FPS
+const SCROLL_THROTTLE_MS = 16;
+
+// スクロール最適化のための参照を追加
+const lastScrollRef = useRef<number>(0);
+const scrollRAFRef = useRef<number>();
+
+// マウス移動のベース処理を最適化
+const optimizedHandleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  e.preventDefault();
+  const now = performance.now();
+  
+  // スロットリングを適用
+  if (now - lastScrollRef.current < SCROLL_THROTTLE_MS) {
+    return;
+  }
+  
+  const position = calculateMousePosition(e);
+  setMousePos(position);
+
+  if (currentTool !== 'none' && isDrawing.current) {
+    draw(e);
+  } else if (isDragging && containerRef.current) {
+    if (scrollRAFRef.current) {
+      cancelAnimationFrame(scrollRAFRef.current);
+    }
+
+    scrollRAFRef.current = requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (!container) return;
+      
+      const rect = container.getBoundingClientRect();
+      const dragX = e.pageX - rect.left;
+      const dragY = e.pageY - rect.top;
+
+      container.scrollLeft = scrollLeft - (dragX - startX);
+      container.scrollTop = scrollTop - (dragY - startY);
+      
+      lastScrollRef.current = now;
+    });
+  }
+}, [calculateMousePosition, isDragging, scrollLeft, scrollTop, startX, startY, currentTool, draw]);
+
+// スクロール処理の最適化
+const optimizedScroll = useCallback(() => {
+  if (!containerRef.current) return;
+  
+  const now = performance.now();
+  if (now - lastScrollRef.current < SCROLL_THROTTLE_MS) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    requestDraw();
+    lastScrollRef.current = now;
+  });
+}, [requestDraw]);
+
+// スクロールイベントリスナーの設定を最適化
+useEffect(() => {
+  const container = containerRef.current;
+  if (!container) return;
+
+  const throttledScroll = throttle(optimizedScroll, SCROLL_THROTTLE_MS, {
+    leading: true,
+    trailing: true
+  });
+
+  container.addEventListener('scroll', throttledScroll);
+  
+  return () => {
+    container.removeEventListener('scroll', throttledScroll);
+    if (scrollRAFRef.current) {
+      cancelAnimationFrame(scrollRAFRef.current);
+    }
+  };
+}, [optimizedScroll]);
+
+// クリーンアップを強化
+useEffect(() => {
+  return () => {
+    if (scrollRAFRef.current) {
+      cancelAnimationFrame(scrollRAFRef.current);
+    }
+    if (renderRequestRef.current) {
+      cancelAnimationFrame(renderRequestRef.current);
+    }
+  };
+}, []);
 
   return (
     <div className="flex flex-col h-full">
