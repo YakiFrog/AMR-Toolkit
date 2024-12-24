@@ -22,9 +22,11 @@ interface PGMViewerProps {
   layerVisibility: {
     pgm: boolean;
     drawing: boolean;
+    path: boolean; // 追加
   };
   waypoints: { x: number; y: number; theta: number }[]; // 追加
   setWaypoints: React.Dispatch<React.SetStateAction<{ x: number; y: number; theta: number }[]>>; // 追加
+  plannedPath: { x: number; y: number }[]; // 追加
 }
 
 // より厳密な型定義を追加（名前を変更）
@@ -35,13 +37,17 @@ type PGMImageData = {
   pixelData: Uint8Array;
 };
 
+// レンダリング間隔の定数を定義
+const RENDER_INTERVAL = 16; // 約60FPS
+
 export const PGMViewer: React.FC<PGMViewerProps> = ({ 
   file, 
   onLoadSuccess, 
   onLoadError, 
   layerVisibility,
   waypoints,
-  setWaypoints
+  setWaypoints,
+  plannedPath // 追加
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -76,6 +82,7 @@ export const PGMViewer: React.FC<PGMViewerProps> = ({
 
   // パフォーマンス最適化のための参照
   const renderRequestRef = useRef<number>();
+  const lastRenderTime = useRef<number>(0);
   const lastDrawTimeRef = useRef<number>(0);
   const mouseMoveThrottleRef = useRef<Function>();
   const drawingRef = useRef<boolean>(false); // 描画中フラグを追加
@@ -229,92 +236,139 @@ const drawWaypoints = useCallback((ctx: CanvasRenderingContext2D) => {
 }, [waypoints, tempWaypoint, mousePos.imageX, mousePos.imageY, drawArrow]);
 
   // drawImage関数を定義
-  const drawImage = useCallback(() => {
-    if (!currentImageData || !layerManagerRef.current) return;
-    
-    const { width, height, pixelData } = currentImageData;
-    const pgmLayer = layerManagerRef.current.getLayer('pgm');
-    
-    if (pgmLayer) {
-      const imageData = pgmLayer.ctx.createImageData(width, height);
-      for (let i = 0; i < pixelData.length; i++) {
-        const offset = i * 4;
-        imageData.data[offset] = pixelData[i];
-        imageData.data[offset + 1] = pixelData[i];
-        imageData.data[offset + 2] = pixelData[i];
-        imageData.data[offset + 3] = 255;
-      }
-      pgmLayer.ctx.putImageData(imageData, 0, 0);
+const drawImage = useCallback(() => {
+  if (!currentImageData || !layerManagerRef.current) return;
+  
+  const { width, height, pixelData } = currentImageData;
+  const pgmLayer = layerManagerRef.current.getLayer('pgm');
+  
+  if (pgmLayer) {
+    const imageData = pgmLayer.ctx.createImageData(width, height);
+    for (let i = 0; i < pixelData.length; i++) {
+      const offset = i * 4;
+      imageData.data[offset] = pixelData[i];
+      imageData.data[offset + 1] = pixelData[i];
+      imageData.data[offset + 2] = pixelData[i];
+      imageData.data[offset + 3] = 255;
     }
+    pgmLayer.ctx.putImageData(imageData, 0, 0);
+  }
 
-    if (showGrid) {
-      const gridLayer = layerManagerRef.current.getLayer('grid');
-      if (gridLayer) {
-        drawGrid(gridLayer.ctx);
-      }
+  if (showGrid) {
+    const gridLayer = layerManagerRef.current.getLayer('grid');
+    if (gridLayer) {
+      drawGrid(gridLayer.ctx);
     }
+  }
 
-    const waypointLayer = layerManagerRef.current.getLayer('waypoints');
-    if (waypointLayer) {
-      drawWaypoints(waypointLayer.ctx);
+  const waypointLayer = layerManagerRef.current.getLayer('waypoints');
+  if (waypointLayer) {
+    drawWaypoints(waypointLayer.ctx);
+  }
+
+  // 追加: パスの再描画
+  if (layerVisibility.path && plannedPath.length) {
+    const pathLayer = layerManagerRef.current.getLayer('path');
+    if (pathLayer) {
+      const ctx = pathLayer.ctx;
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.beginPath();
+      ctx.strokeStyle = '#10B981';
+      ctx.lineWidth = 3 / scale;
+      ctx.moveTo(plannedPath[0].x, plannedPath[0].y);
+      plannedPath.forEach((point) => {
+        ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+
+      // パス上のポイントにもマーカーを描画
+      ctx.fillStyle = '#10B981';
+      plannedPath.forEach((point) => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 3 / scale, 0, Math.PI * 2);
+        ctx.fill();
+      });
     }
+  }
 
-    layerManagerRef.current.render();
-  }, [currentImageData, showGrid, drawGrid, drawWaypoints]);
+  layerManagerRef.current.render();
+}, [currentImageData, showGrid, drawGrid, drawWaypoints, layerVisibility.path, plannedPath, scale]);
 
   // requestDraw関数を定義
   const requestDraw = useCallback(() => {
-    if (renderRequestRef.current) {
-      cancelAnimationFrame(renderRequestRef.current);
-    }
-
-    renderRequestRef.current = requestAnimationFrame(() => {
-      const now = performance.now();
-      if (now - lastDrawTimeRef.current > 16) {
-        drawImage();
-        lastDrawTimeRef.current = now;
+    const now = performance.now();
+    if (now - lastRenderTime.current < RENDER_INTERVAL) {
+      if (renderRequestRef.current) {
+        cancelAnimationFrame(renderRequestRef.current);
       }
-    });
+      renderRequestRef.current = requestAnimationFrame(requestDraw);
+      return;
+    }
+  
+    lastRenderTime.current = now;
+    drawImage();
+    renderRequestRef.current = null;
   }, [drawImage]);
 
-  // レイヤーマネージャーの初期化
-  const initLayerManager = useCallback(() => {
-    if (!currentImageData || !containerRef.current) return;
+  // レイヤーマネージャーの初期化を修正
+const initLayerManager = useCallback(() => {
+  if (!currentImageData || !containerRef.current) return;
 
-    const container = containerRef.current.querySelector('div[style*="transform"]') as HTMLElement;
-    if (!container) return;
-    
-    // 既存のレイヤーマネージャーをクリーンアップ
-    if (layerManagerRef.current) {
-      const mainCanvas = layerManagerRef.current.getMainCanvas();
-      mainCanvas.remove();
+  const container = containerRef.current.querySelector('div[style*="transform"]') as HTMLElement;
+  if (!container) return;
+  
+  // 既存のレイヤーマネージャーをクリーンアップ
+  if (layerManagerRef.current) {
+    const mainCanvas = layerManagerRef.current.getMainCanvas();
+    mainCanvas.remove();
+  }
+  
+  layerManagerRef.current = new LayerManager(
+    currentImageData.width,
+    currentImageData.height,
+    container
+  );
+
+  // レイヤーの作成と初期化（順序を変更）
+  const layers = [
+    { id: 'pgm', zIndex: 0 },
+    { id: 'grid', zIndex: 1 },
+    { id: 'path', zIndex: 2 },
+    { id: 'waypoints', zIndex: 3 },
+    { id: 'drawing', zIndex: 5 }  // 描画レイヤーを最前面に
+  ];
+
+  layers.forEach(({ id, zIndex }) => {
+    const layer = layerManagerRef.current!.createLayer(id, zIndex);
+    if (layer) {
+      layer.visible = layerVisibility[id as keyof typeof layerVisibility] ?? true;
+      
+      // 描画レイヤーの設定を追加
+      if (id === 'drawing') {
+        layer.ctx.lineCap = 'round';
+        layer.ctx.lineJoin = 'round';
+      }
     }
-    
-    layerManagerRef.current = new LayerManager(
-      currentImageData.width,
-      currentImageData.height,
-      container
-    );
+  });
 
-    // 基本レイヤーの作成
-    layerManagerRef.current.createLayer('pgm', 0);
-    layerManagerRef.current.createLayer('drawing', 1);
-    layerManagerRef.current.createLayer('grid', 2);
-    layerManagerRef.current.createLayer('waypoints', 3);
-
-    // 状態を即時反映
-    layerManagerRef.current.setVisibility('pgm', layerVisibility.pgm);
-    layerManagerRef.current.setVisibility('drawing', layerVisibility.drawing);
-
-    // 描画データの復元
-    const drawingLayer = layerManagerRef.current.getLayer('drawing');
-    if (drawingLayer && drawingLayerDataRef.current) {
-      drawingLayer.ctx.putImageData(drawingLayerDataRef.current, 0, 0);
-    }
-    
-    // 初期描画
+  // コンテンツの描画
+  requestAnimationFrame(() => {
+    drawImage();
     requestDraw();
-  }, [currentImageData, layerVisibility, requestDraw]);
+  });
+
+  // レイヤーの設定を最適化
+  if (layerManagerRef.current) {
+    const drawingLayer = layerManagerRef.current.getLayer('drawing');
+    if (drawingLayer) {
+      const ctx = drawingLayer.ctx;
+      // 描画パフォーマンスを向上させる設定
+      ctx.imageSmoothingEnabled = false;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }
+  }
+}, [currentImageData, layerVisibility, drawImage, requestDraw]);
 
   // レイヤーの表示状態の更新
   useEffect(() => {
@@ -381,37 +435,46 @@ const draw = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
   const drawingLayer = layerManagerRef.current.getLayer('drawing');
   if (!drawingLayer || !drawingLayer.visible) return;
 
-  // コンテナの位置を取得
   const containerRect = containerRef.current?.getBoundingClientRect();
   if (!containerRect) return;
 
-  // スクロール位置を考慮した座標計算
   const scrollLeft = containerRef.current?.scrollLeft || 0;
   const scrollTop = containerRef.current?.scrollTop || 0;
 
-  // マウス座標をキャンバス座標に変換
-  const x = ((e.clientX - containerRect.left + scrollLeft) / scale);
-  const y = ((e.clientY - containerRect.top + scrollTop) / scale);
+  const x = (e.clientX - containerRect.left + scrollLeft) / scale;
+  const y = (e.clientY - containerRect.top + scrollTop) / scale;
 
-  drawingLayer.ctx.beginPath();
+  const ctx = drawingLayer.ctx;
+  ctx.save();  // コンテキストの状態を保存
+
+  // 描画スタイルの設定
+  ctx.strokeStyle = currentTool === 'pen' ? 'black' : 'white';
+  ctx.lineWidth = penSize / scale;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.beginPath();
   if (lastPos.current) {
-    drawingLayer.ctx.moveTo(lastPos.current.x, lastPos.current.y);
-    drawingLayer.ctx.lineTo(x, y);
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(x, y);
   } else {
-    drawingLayer.ctx.moveTo(x, y);
-    drawingLayer.ctx.lineTo(x, y);
-    // 描画開始時に履歴を保存
-    saveToHistory();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y);
   }
-
-  drawingLayer.ctx.strokeStyle = currentTool === 'pen' ? 'black' : 'white';
-  drawingLayer.ctx.lineWidth = penSize / scale;
-  drawingLayer.ctx.stroke();
+  
+  ctx.stroke();
+  ctx.restore();  // コンテキストの状態を復元
+  
   lastPos.current = { x, y };
 
-  // 描画後に明示的にレンダリング
-  layerManagerRef.current.render();
-}, [currentTool, penSize, scale, saveToHistory]);
+  // レンダリングを最適化
+  if (!renderRequestRef.current) {
+    renderRequestRef.current = requestAnimationFrame(() => {
+      layerManagerRef.current?.render();
+      renderRequestRef.current = null;
+    });
+  }
+}, [currentTool, penSize, scale]);
 
   // PGMファイルの読み込み処理
   useEffect(() => {
@@ -660,8 +723,12 @@ const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
   if (currentTool !== 'none' && isDrawing.current) {
     isDrawing.current = false;
     lastPos.current = null;
-    // 描画完了時に履歴を保存
     handleDrawingComplete();
+    
+    // 即座にレンダリング
+    if (layerManagerRef.current) {
+      layerManagerRef.current.render();
+    }
   } else {
     setIsDragging(false);
     e.currentTarget.style.cursor = 'default';

@@ -7,6 +7,7 @@ import { PGMViewer } from '../components/waypoint-editor/pgm_viewer';
 import { getDB } from '../db'; // DB関連のインポートを追加
 import { LayerPanel } from '../components/waypoint-editor/layer_panel';
 import { WaypointTool } from '../components/waypoint-editor/waypoint_tool';
+import { calculateAstarPath } from '../utils/path-planning'; // 新しく作成する必要があります
 
 export default function PGMViewerPage() {
   const [selectedFile, setSelectedFile] = useState<File | undefined>(undefined);
@@ -202,9 +203,32 @@ export default function PGMViewerPage() {
 
   const [waypoints, setWaypoints] = useState<{ x: number; y: number; theta: number }[]>([]); // 型定義を追加
   
+  const [plannedPath, setPlannedPath] = useState<{ x: number; y: number }[]>([]);
+  const [isPlanning, setIsPlanning] = useState(false);
+
+  const handlePlanPath = async () => {
+    if (waypoints.length < 2) return;
+    
+    setIsPlanning(true);
+    try {
+      // 少し遅延を入れてUIのフィードバックを見やすくする
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const path = await calculateAstarPath(waypoints);
+      setPlannedPath(path);
+      toast.success('パスプランニングが完了しました');
+    } catch (error) {
+      console.error('Path planning failed:', error);
+      toast.error('パスプランニングに失敗しました');
+    } finally {
+      setIsPlanning(false);
+    }
+  };
+
   const [layers, setLayers] = useState([
     { id: 'pgm', name: 'PGMマップ', visible: true, color: '#666666' },
-    { id: 'drawing', name: '描写レイヤー', visible: true, color: '#3B82F6' }
+    { id: 'drawing', name: '描写レイヤー', visible: true, color: '#3B82F6' },
+    { id: 'path', name: '計画パス', visible: true, color: '#10B981' } // 追加
   ]);
 
   const handleToggleLayer = useCallback((layerId: string) => {
@@ -216,7 +240,8 @@ export default function PGMViewerPage() {
   // レイヤーの表示状態をオブジェクトとして生成
   const layerVisibility = {
     pgm: layers.find(l => l.id === 'pgm')?.visible ?? true,
-    drawing: layers.find(l => l.id === 'drawing')?.visible ?? true
+    drawing: layers.find(l => l.id === 'drawing')?.visible ?? true,
+    path: layers.find(l => l.id === 'path')?.visible ?? true // 追加
   };
 
   return (
@@ -255,6 +280,7 @@ export default function PGMViewerPage() {
                     layerVisibility={layerVisibility}
                     waypoints={waypoints}
                     setWaypoints={setWaypoints}
+                    plannedPath={plannedPath} // 追加
                     onLoadSuccess={() => {
                       // 初回のみ通知を表示
                       if (!sessionStorage.getItem(`loaded-${selectedFile.name}`)) {
@@ -296,6 +322,8 @@ export default function PGMViewerPage() {
                   <WaypointTool
                     waypoints={waypoints}
                     setWaypoints={setWaypoints}
+                    onPlanPath={handlePlanPath}
+                    isPlanning={isPlanning}
                   />
 
                   <div className="bg-neutral-100 rounded-lg p-4 border border-neutral-200">

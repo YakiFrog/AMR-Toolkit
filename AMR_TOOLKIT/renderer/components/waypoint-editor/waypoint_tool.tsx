@@ -1,12 +1,14 @@
 import React from 'react';
-import { FaMapMarkerAlt, FaTrash } from 'react-icons/fa';
+import { FaMapMarkerAlt, FaTrash, FaRoute } from 'react-icons/fa'; // FaRouteを追加
 
 interface WaypointToolProps {
-  waypoints: { x: number; y: number; theta: number }[]; // theta を追加
+  waypoints: { x: number; y: number; theta: number }[];
   setWaypoints: React.Dispatch<React.SetStateAction<{ x: number; y: number; theta: number }[]>>;
+  onPlanPath?: () => void; // 追加
+  isPlanning?: boolean; // 追加
 }
 
-export const WaypointTool: React.FC<WaypointToolProps> = ({ waypoints, setWaypoints }) => {
+export const WaypointTool: React.FC<WaypointToolProps> = ({ waypoints, setWaypoints, onPlanPath, isPlanning }) => {
   if (waypoints.length === 0) return null;
 
   // 角度をラジアンから度数に変換する関数
@@ -21,13 +23,29 @@ export const WaypointTool: React.FC<WaypointToolProps> = ({ waypoints, setWaypoi
           <FaMapMarkerAlt className="text-neutral-400" />
           Waypoints ({waypoints.length})
         </h3>
-        <button
-          onClick={() => setWaypoints([])}
-          className="text-slate-400 hover:text-slate-200 p-2 rounded hover:bg-slate-700 transition-colors"
-          title="全て削除"
-        >
-          <FaTrash className="w-4 h-4" />
-        </button>
+        <div className="space-x-2">
+          <button
+            onClick={() => setWaypoints([])}
+            className="text-slate-400 hover:text-slate-200 p-2 rounded hover:bg-slate-700 transition-colors"
+            title="全て削除"
+          >
+            <FaTrash className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onPlanPath}
+            disabled={isPlanning || waypoints.length < 2}
+            className={`p-2 rounded transition-colors ${
+              waypoints.length < 2
+                ? 'text-gray-600 cursor-not-allowed'
+                : isPlanning
+                ? 'bg-blue-600/50 text-white'
+                : 'text-blue-500 hover:bg-blue-500 hover:text-white'
+            }`}
+            title="パスを計画"
+          >
+            <FaRoute className="w-4 h-4" />
+          </button>
+        </div>
       </div>
       <div className="max-h-40 overflow-y-auto space-y-2">
         {waypoints.map((waypoint, index) => (
